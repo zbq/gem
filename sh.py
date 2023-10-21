@@ -620,12 +620,19 @@ class Result:
     def asnum(self, conv=int, base=0, /, *, ignore_conv_err=False):
         return asnum(conv, base, ignore_conv_err=ignore_conv_err, stdin=self._stdout)
 
-    def print(self, *, tip=None, end=None):
-        if tip:
-            print(tip, end='', flush=True)
-        if end is None:
-            end = '' if self._stdout.endswith('\n') else '\n'
-        print(self._stdout, end=end, flush=True)
+    def print(self, *, prolog=None, body_end=None, epilog=None, file=sys.stdout):
+        """
+        print with optional prolog and epilog.
+
+            body_end: if None, print newline if body not ends with newline
+        """
+        if prolog:
+            print(prolog, end='', file=file, flush=True)
+        if body_end is None:
+            body_end = '' if self._stdout.endswith('\n') else '\n'
+        print(self._stdout, end=body_end, file=file, flush=True)
+        if epilog:
+            print(epilog, end='', file=file, flush=True)
 
     def __repr__(self):
         text = self._stdout if self.__bool__() else self._stderr
