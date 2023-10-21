@@ -626,7 +626,6 @@ class Result:
         if end is None:
             end = '' if self._stdout.endswith('\n') else '\n'
         print(self._stdout, end=end, flush=True)
-        return self
 
     def __repr__(self):
         text = self._stdout if self.__bool__() else self._stderr
