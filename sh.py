@@ -72,9 +72,9 @@ def cat(pathname, /, *, encoding=None, errors=None):
 def _assert_exclusive(**kwargs):
     found = 0
     for kw in kwargs:
-        if kwargs[kw]:
+        if kwargs[kw] is not None:
             found += 1
-    assert found == 1, f'one and only one argument is need: {", ".join(kwargs.keys())}'
+    assert found == 1, f'{found} argument(s) provided, one and only one argument is required: {", ".join(kwargs.keys())}'
 
 def grep(pattern, /, *, ignorecase=False, invert=False, group_sep=' ', stdin=None, pathname=None, encoding=None, errors=None):
     """
