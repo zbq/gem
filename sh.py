@@ -309,14 +309,14 @@ def around(index, count, /, *, ignorecase=False, invert=False, stdin=None, pathn
         indexes = _around(*indexes, count=count, length=len(lines))
     return Result('\n'.join(_select(lines, *indexes)))
 
-def cut(*, delim=r'\s+', fmt, stdin=None, pathname=None, encoding=None, errors=None):
+def cut(*, delim=r'\s+', fields=(slice(0, None), ), join_by=' ', stdin=None, pathname=None, encoding=None, errors=None):
     """
     simulate `cut` command.
         delim: delimiter(support regular expression)
-        fmt: output format of fields
-        
+        fields: select fields before join
+
     example:
-        cut(fmt='{0} {1}', stdin="  Name:   Tony\n  Age:    12")
+        cut(stdin="  Name:   Tony\n  Age:    12")
         ===>
         Name: Tony
         Age: 12
@@ -331,11 +331,9 @@ def cut(*, delim=r'\s+', fmt, stdin=None, pathname=None, encoding=None, errors=N
         text = stdin
     res = []
     for line in text.splitlines():
-        try:
-            parts = [p for p in re.split(delim, line) if (p and not p.isspace())] # strip blank field
-            res.append(fmt.format(*parts))
-        except IndexError:
-            pass
+        #parts = [p for p in re.split(delim, line) if (p and not p.isspace())] # strip blank field
+        parts = _select(re.split(delim, line), *fields)
+        res.append(join_by.join(parts))
     if res:
         return Result('\n'.join(res))
     else:
@@ -495,7 +493,6 @@ def asnum(*, int_base=10, dim_reduction=False, stdin=None, pathname=None, encodi
             tmp = nums
         else:
             tmp = []
-            nums.append(tmp)
         for mo in re.finditer(token_regex, line):
             kind = mo.lastgroup
             value = mo.group()
@@ -506,6 +503,8 @@ def asnum(*, int_base=10, dim_reduction=False, stdin=None, pathname=None, encodi
             elif kind == 'int':
                 value = int(value, int_base)
             tmp.append(value)
+        if not dim_reduction and tmp: # skip empty list
+            nums.append(tmp)
     if dim_reduction and len(nums) == 1:
         return nums[0]
     else:
@@ -591,8 +590,8 @@ class Result:
     def select(self, *nums):
         return select(*nums, stdin=self._stdout)
 
-    def cut(self, *, delim=r'\s+', fmt):
-        return cut(delim=delim, fmt=fmt, stdin=self._stdout)
+    def cut(self, *, delim=r'\s+', fields=(slice(0, None), ), join_by=' '):
+        return cut(delim=delim, fields=fields, join_by=join_by, stdin=self._stdout)
 
     def sed(self, pattern, repl, /, *, count=0, ignorecase=False):
         return sed(pattern, repl, count=count, ignorecase=ignorecase, stdin=self._stdout)
@@ -693,8 +692,9 @@ if __name__ == '__main__':
     assert_eq('around line', res.around(2, 1).stdout, 't1\nt2\nt3')
     assert_eq('around pattern', res.around('t2', 1).stdout, 't1\nt2\nt3')
 
-    res = Result("  Name:   Tony\n  Age:    12")
-    assert_eq('cut', res.cut(fmt='{0} {1}').stdout, 'Name: Tony\nAge: 12')
+    res = Result("1, 2, 3, 4, 5, 6\nt1,    t2,t3, t4, t5, t6, t7, t8")
+    assert_eq('cut', res.cut(delim=r',\s*', fields=(1, range(2, 4), slice(-2, None)), join_by=' ').stdout,
+              '2 3 4 5 6\nt2 t3 t4 t7 t8')
 
     res = Result("Name:   Tony\nAge: \t 12")
     assert_eq('sed', res.sed(r'\s+', ' ').stdout, 'Name: Tony\nAge: 12')
@@ -737,7 +737,7 @@ if __name__ == '__main__':
     assert_eq('sort ascending', res.sort().stdout, '1\n2\n3')
     assert_eq('sort descending', res.sort(ascending=False).stdout, '3\n2\n1')
 
-    res = Result('hello1,-2,- 3x\nhello x3e1 3.1 3.1e1\n0x12 -0o666 +0b11')
+    res = Result('hello1,-2,- 3x\n   \nhello x3e1 3.1 3.1e1\n0x12 -0o666 +0b11')
     assert_eq('asnum', res.asnum(), [[1,-2,3], [3e1, 3.1, 3.1e1], [0x12, -0o666, 0b11]])
     assert_eq('asnum reduce dim', res.asnum(dim_reduction=True), [1,-2,3, 3e1, 3.1, 3.1e1, 0x12, -0o666, 0b11])
     res = Result('Age:\n  12')
