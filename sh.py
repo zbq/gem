@@ -400,7 +400,7 @@ def foreach(type, proc, /, *, stdin=None, pathname=None, encoding=None, errors=N
         if proc(txt):
             break
 
-def compact(*, strip=True, join_by=' ', stdin=None, pathname=None, encoding=None, errors=None):
+def compact(*, strip=True, remove_empty_line=True, join_by=' ', stdin=None, pathname=None, encoding=None, errors=None):
     _assert_exclusive(stdin=stdin, pathname=pathname)
     if pathname:
         res = cat(pathname, encoding=encoding, errors=errors)
@@ -413,7 +413,7 @@ def compact(*, strip=True, join_by=' ', stdin=None, pathname=None, encoding=None
     for line in text.splitlines():
         if strip:
             line = line.strip()
-        if strip and not line:
+        if remove_empty_line and not line:
             continue
         res.append(line)
     return Result(join_by.join(res))
@@ -466,7 +466,13 @@ def sort(*, ascending=True, stdin=None, pathname=None, encoding=None, errors=Non
     lines = text.splitlines() # sorted(["0\n", "0"]) => ["0", "0\n"], so do not keep newline
     return Result('\n'.join(sorted(lines, reverse=not ascending)))
 
-def asnum(conv=int, base=0, /, *, ignore_conv_err=False, stdin=None, pathname=None, encoding=None, errors=None):
+def asnum(*, int_base=10, dim_reduction=False, stdin=None, pathname=None, encoding=None, errors=None):
+    """
+    find and convert to number, return None if can not read file.
+
+        int_base: base for integer, if it is not prefixed with 0xX,0bB,0oO
+        dim_reduction: when true, reduce dimension, return single if only one number, else return one-dimension list
+    """
     _assert_exclusive(stdin=stdin, pathname=pathname)
     if pathname:
         res = cat(pathname, encoding=encoding, errors=errors)
@@ -476,16 +482,34 @@ def asnum(conv=int, base=0, /, *, ignore_conv_err=False, stdin=None, pathname=No
     else:
         text = stdin
     nums = []
-    for word in text.split():
-        try:
-            if conv == int:
-                nums.append(int(word, base=base))
-            else:
-                nums.append(float(word))
-        except ValueError:
-            if not ignore_conv_err:
-                return None
-    return nums
+    token_regex = '|'.join('(?P<%s>%s)' % pair for pair in [
+        ('hex', r'[+-]?0[xX][0-9a-fA-F]+'),
+        ('bin', r'[+-]?0[bB][01]+'),
+        ('oct', r'[+-]?0[oO][0-7]+'),
+        ('efloat', r'[+-]?\d+\.?\d*([eE]\d+)'),
+        ('float', r'[+-]?\d+\.\d*'),
+        ('int', r'[+-]?\d+'),
+        ])
+    for line in text.splitlines():
+        if dim_reduction:
+            tmp = nums
+        else:
+            tmp = []
+            nums.append(tmp)
+        for mo in re.finditer(token_regex, line):
+            kind = mo.lastgroup
+            value = mo.group()
+            if kind in ('hex', 'bin', 'oct'):
+                value = int(value, 0)
+            elif kind in ('float', 'efloat'):
+                value = float(value)
+            elif kind == 'int':
+                value = int(value, int_base)
+            tmp.append(value)
+    if dim_reduction and len(nums) == 1:
+        return nums[0]
+    else:
+        return nums
 
 class Result:
     class NOP:
@@ -605,8 +629,8 @@ class Result:
     def dedent(self):
         return Result(textwrap.dedent(self._stdout))
 
-    def compact(self, *, strip=True, join_by=' '):
-        return compact(strip=strip, join_by=join_by, stdin=self._stdout)
+    def compact(self, *, strip=True, remove_empty_line=True, join_by=' '):
+        return compact(strip=strip, remove_empty_line=remove_empty_line, join_by=join_by, stdin=self._stdout)
 
     def wc(self, type, /):
         return wc(type, stdin=self._stdout)
@@ -617,8 +641,8 @@ class Result:
     def sort(self, *, ascending=True):
         return sort(ascending=ascending, stdin=self._stdout)
 
-    def asnum(self, conv=int, base=0, /, *, ignore_conv_err=False):
-        return asnum(conv, base, ignore_conv_err=ignore_conv_err, stdin=self._stdout)
+    def asnum(self, /, *, int_base=10, dim_reduction=False):
+        return asnum(int_base=int_base, dim_reduction=dim_reduction, stdin=self._stdout)
 
     def print(self, *, prolog=None, body_end=None, epilog=None, file=sys.stdout):
         """
@@ -696,9 +720,10 @@ if __name__ == '__main__':
     assert_eq('break foreach', tmp, ['1'])
     assert_eq('iterate non exist file', foreach('word', lambda txt: tmp.append(txt), pathname='non-exist-file'), None)
 
-    res = Result('1 \n 2\n 3')
+    res = Result('1 \n\n 2\n 3')
     assert_eq('compact with strip', res.compact().stdout, '1 2 3')
     assert_eq('compact without strip', res.compact(strip=False, join_by=',').stdout, '1 , 2, 3')
+    assert_eq('compact without remove empty line', res.compact(remove_empty_line=False, join_by=',').stdout, '1,,2,3')
 
     res = Result('1 \n 2\n 3')
     assert_eq('wc char', res.wc('char').stdout, '8')
@@ -712,10 +737,12 @@ if __name__ == '__main__':
     assert_eq('sort ascending', res.sort().stdout, '1\n2\n3')
     assert_eq('sort descending', res.sort(ascending=False).stdout, '3\n2\n1')
 
-    res = Result('1\n3\n2')
-    assert_eq('asnum for int', res.asnum(), [1, 3, 2])
-    res = Result('1.1\n3.3\n2.2')
-    assert_eq('asnum for float', res.asnum(float), [1.1, 3.3, 2.2])
+    res = Result('hello1,-2,- 3x\nhello x3e1 3.1 3.1e1\n0x12 -0o666 +0b11')
+    assert_eq('asnum', res.asnum(), [[1,-2,3], [3e1, 3.1, 3.1e1], [0x12, -0o666, 0b11]])
+    assert_eq('asnum reduce dim', res.asnum(dim_reduction=True), [1,-2,3, 3e1, 3.1, 3.1e1, 0x12, -0o666, 0b11])
+    res = Result('Age:\n  12')
+    assert_eq('asnum one num', res.asnum(dim_reduction=True), 12)
+
 
     res = Result('1\n2\n3')
     assert_eq('xargs', res.xargs('echo {line}').stdout, "1\n2\n3\n")
