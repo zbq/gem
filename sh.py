@@ -53,7 +53,7 @@ def run(cmdline, /, *, stdin=None, stdout=PIPE, stderr=PIPE, encoding=None, erro
         outs, errs = proc.communicate(stdin)
         return Result(outs, returncode=proc.returncode, stderr=errs)
 
-def cat(pathname, /, *, encoding=None, errors=None):
+def cat(pathname, /, *, encoding=None, errors=None, newline=None):
     """
     simulate `cat`, but support file encoding.
         encoding: the name of the encoding used to decode the file. The default encoding is platform dependent (whatever locale.getpreferredencoding() returns)
@@ -64,7 +64,7 @@ def cat(pathname, /, *, encoding=None, errors=None):
             ...
     """
     try:
-        with open(pathname, encoding=encoding, errors=errors) as file:
+        with open(pathname, encoding=encoding, errors=errors, newline=newline) as file:
             return Result(file.read())
     except Exception as exp:
         return Result('', returncode=1, stderr=str(exp))
@@ -313,7 +313,7 @@ def cut(*, delim=r'\s+', maxsplit=0, fields=(slice(0, None), ), join_by=' ', std
     """
     simulate `cut` command.
         delim: delimiter(support regular expression)
-        maxsplit: If maxsplit is nonzero, at most maxsplit splits occur for each line.
+        maxsplit: if maxsplit is nonzero, at most maxsplit splits occur for each line.
         fields: select fields before join
 
     example:
@@ -343,7 +343,7 @@ def cut(*, delim=r'\s+', maxsplit=0, fields=(slice(0, None), ), join_by=' ', std
 def sed(pattern, repl, /, *, count=0, ignorecase=False, stdin=None, pathname=None, encoding=None, errors=None):
     """
     substitute, simulate and enhancement of `sed "s/pattern/repl/xx" xxx`.
-        count: maximum number of pattern occurrences to be replaced, If zero, all occurrences will be replaced.
+        count: maximum number of pattern occurrences to be replaced, if zero, all occurrences will be replaced.
         ignorecase: ignore case when search pattern
 
     example:
@@ -421,7 +421,7 @@ def wc(type, /, *, stdin=None, pathname=None, encoding=None, errors=None):
     assert type in ('char', 'word', 'line'), 'valid wc type: char, word, line'
     _assert_exclusive(stdin=stdin, pathname=pathname)
     if pathname:
-        res = cat(pathname, encoding=encoding, errors=errors)
+        res = cat(pathname, encoding=encoding, errors=errors, newline='') # do not translate newline for wc('char')
         if not res:
             return res
         text = res.stdout
