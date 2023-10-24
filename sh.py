@@ -309,10 +309,11 @@ def around(index, count, /, *, ignorecase=False, invert=False, stdin=None, pathn
         indexes = _around(*indexes, count=count, length=len(lines))
     return Result('\n'.join(_select(lines, *indexes)))
 
-def cut(*, delim=r'\s+', fields=(slice(0, None), ), join_by=' ', stdin=None, pathname=None, encoding=None, errors=None):
+def cut(*, delim=r'\s+', maxsplit=0, fields=(slice(0, None), ), join_by=' ', stdin=None, pathname=None, encoding=None, errors=None):
     """
     simulate `cut` command.
         delim: delimiter(support regular expression)
+        maxsplit: If maxsplit is nonzero, at most maxsplit splits occur for each line.
         fields: select fields before join
 
     example:
@@ -332,7 +333,7 @@ def cut(*, delim=r'\s+', fields=(slice(0, None), ), join_by=' ', stdin=None, pat
     res = []
     for line in text.splitlines():
         #parts = [p for p in re.split(delim, line) if (p and not p.isspace())] # strip blank field
-        parts = _select(re.split(delim, line), *fields)
+        parts = _select(re.split(delim, line, maxsplit), *fields)
         res.append(join_by.join(parts))
     if res:
         return Result('\n'.join(res))
@@ -590,8 +591,8 @@ class Result:
     def select(self, *nums):
         return select(*nums, stdin=self._stdout)
 
-    def cut(self, *, delim=r'\s+', fields=(slice(0, None), ), join_by=' '):
-        return cut(delim=delim, fields=fields, join_by=join_by, stdin=self._stdout)
+    def cut(self, *, delim=r'\s+', maxsplit=0, fields=(slice(0, None), ), join_by=' '):
+        return cut(delim=delim, maxsplit=maxsplit, fields=fields, join_by=join_by, stdin=self._stdout)
 
     def sed(self, pattern, repl, /, *, count=0, ignorecase=False):
         return sed(pattern, repl, count=count, ignorecase=ignorecase, stdin=self._stdout)
