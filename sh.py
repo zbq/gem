@@ -380,28 +380,39 @@ def sed(pattern, repl, /, *, count=0, ignorecase=False, stdin=None, pathname=Non
 
 def foreach(type, proc, /, *, stdin=None, pathname=None, encoding=None, errors=None):
     """
-    call `proc(text)` for each char/word/line until exhausted or `proc` return True
+    call `proc(text)` for each char/word/line until exhausted or `proc` return None.
+    if `proc` return non-None, it will be appended to output. None will be passed to `proc` to indicate exhausted.
         type: iterate type, char/word/line
-        proc: signature: proc(text) -> bool
+        proc: signature: proc(text:str|None) -> str|None
     """
     assert type in ('char', 'word', 'line'), 'valid iterate type: char, word, line'
     _assert_exclusive(stdin=stdin, pathname=pathname)
     if pathname:
-        res = cat(pathname, encoding=encoding, errors=errors)
+        res = cat(pathname, encoding=encoding, errors=errors, newline='') # do not translate newline for foreach('char')
         if not res:
-            return None
+            return res
         text = res.stdout
     else:
         text = stdin
+    def iterate(txts, res):
+        for txt in txts:
+            new = proc(txt)
+            if new:
+                res.append(new)
+            elif new is None:
+                return True
+        return False
+    res = []
+    done = False
     if type == 'char':
-        txts = text
+        done = iterate(text, res)
     elif type == 'word':
-        txts = text.split()
+        done = iterate(text.split(), res)
     else:
-        txts = text.splitlines()
-    for txt in txts:
-        if proc(txt):
-            break
+        done = iterate(text.splitlines(), res)
+    if not done:
+        iterate((None,), res) # tell proc no more text
+    return Result(''.join(res))
 
 def compact(*, strip=True, remove_empty_line=True, join=' ', stdin=None, pathname=None, encoding=None, errors=None):
     _assert_exclusive(stdin=stdin, pathname=pathname)
@@ -602,8 +613,7 @@ class Result:
         return sed(pattern, repl, count=count, ignorecase=ignorecase, stdin=self._stdout)
 
     def foreach(self, type, proc, /):
-        foreach(type, proc, stdin=self._stdout)
-        return self
+        return foreach(type, proc, stdin=self._stdout)
 
     def xargs(self, format, /, *, encoding=None, errors=None):
         """
@@ -707,25 +717,22 @@ if __name__ == '__main__':
     assert_eq('sed', res.sed(r'\s+', ' ').stdout, 'Name: Tony\nAge: 12')
     assert_eq('sed sub group repl', res.sed(r'(\S+)\s+(\S+)', r'\g<1> "\g<2>"').stdout, 'Name: "Tony"\nAge: "12"')
 
-    res = Result('1 \n 2\n 3')
-    tmp = []
-    res.foreach('char', lambda txt: tmp.append(txt))
-    assert_eq('foreach char', tmp, ['1', ' ', '\n', ' ', '2', '\n', ' ', '3'])
-    tmp.clear()
-    res.foreach('word', lambda txt: tmp.append(txt))
-    assert_eq('foreach word', tmp, ['1', '2', '3'])
-    tmp.clear()
-    res.foreach('line', lambda txt: tmp.append(txt))
-    assert_eq('foreach line', tmp, ['1 ', ' 2', ' 3'])
-    tmp.clear()
-    def break_foreach(txt):
-        if txt == '2':
-            return True
+    res = Result('1 \r\n\n 2\n 3')
+    def foreach_appendx(txt):
+        if txt is None:
+            return 'done'
+        return 'x'+txt
+    assert_eq('foreach char', res.foreach('char', foreach_appendx).stdout, 'x1x x\rx\nx\nx x2x\nx x3done')
+    assert_eq('foreach word', res.foreach('word', foreach_appendx).stdout, 'x1x2x3done')
+    assert_eq('foreach line', res.foreach('line', foreach_appendx).stdout, 'x1 xx 2x 3done')
+    def foreach_break(txt):
+        if txt.find('2') != -1:
+            return None
         else:
-            tmp.append(txt)
-    res.foreach('word', break_foreach)
-    assert_eq('break foreach', tmp, ['1'])
-    assert_eq('iterate non exist file', foreach('word', lambda txt: tmp.append(txt), pathname='non-exist-file'), None)
+            return txt
+    assert_eq('foreach char break', res.foreach('char', foreach_break).stdout, '1 \r\n\n ')
+    assert_eq('foreach word break', res.foreach('word', foreach_break).stdout, '1')
+    assert_eq('foreach line break', res.foreach('line', foreach_break).stdout, '1 ')
 
     res = Result('1 \n\n 2\n 3')
     assert_eq('compact with strip', res.compact().stdout, '1 2 3')
