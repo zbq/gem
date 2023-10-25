@@ -151,7 +151,7 @@ def select(*nums, stdin=None, pathname=None, encoding=None, errors=None):
     """
     select lines by index, range, slice.
     example:
-        select(1, -1, range(2,4), slice(-3, -1), stdin="0\n1\n2\n3\n4\n5").compact(join_by=',')
+        select(1, -1, range(2,4), slice(-3, -1), stdin="0\n1\n2\n3\n4\n5").compact(join=',')
         ===>
         1,5,2,3,3,4
     """
@@ -309,12 +309,13 @@ def around(index, count, /, *, ignorecase=False, invert=False, stdin=None, pathn
         indexes = _around(*indexes, count=count, length=len(lines))
     return Result('\n'.join(_select(lines, *indexes)))
 
-def cut(*, delim=r'\s+', maxsplit=0, fields=(slice(0, None), ), join_by=' ', stdin=None, pathname=None, encoding=None, errors=None):
+def cut(*, delim=r'\s+', maxsplit=0, fields=(slice(0, None), ), join=' ', format=None, stdin=None, pathname=None, encoding=None, errors=None):
     """
     simulate `cut` command.
         delim: delimiter(support regular expression)
         maxsplit: if maxsplit is nonzero, at most maxsplit splits occur for each line.
-        fields: select fields before join
+        fields: select fields before join/format
+        join/format: selected fields are formatted by `format` (if provided) or joined by `join`
 
     example:
         cut(stdin="  Name:   Tony\n  Age:    12")
@@ -334,7 +335,10 @@ def cut(*, delim=r'\s+', maxsplit=0, fields=(slice(0, None), ), join_by=' ', std
     for line in text.splitlines():
         #parts = [p for p in re.split(delim, line) if (p and not p.isspace())] # strip blank field
         parts = _select(re.split(delim, line, maxsplit), *fields)
-        res.append(join_by.join(parts))
+        if format is not None:
+            res.append(format.format(*parts))
+        else:
+            res.append(join.join(parts))
     if res:
         return Result('\n'.join(res))
     else:
@@ -399,7 +403,7 @@ def foreach(type, proc, /, *, stdin=None, pathname=None, encoding=None, errors=N
         if proc(txt):
             break
 
-def compact(*, strip=True, remove_empty_line=True, join_by=' ', stdin=None, pathname=None, encoding=None, errors=None):
+def compact(*, strip=True, remove_empty_line=True, join=' ', stdin=None, pathname=None, encoding=None, errors=None):
     _assert_exclusive(stdin=stdin, pathname=pathname)
     if pathname:
         res = cat(pathname, encoding=encoding, errors=errors)
@@ -415,7 +419,7 @@ def compact(*, strip=True, remove_empty_line=True, join_by=' ', stdin=None, path
         if remove_empty_line and not line:
             continue
         res.append(line)
-    return Result(join_by.join(res))
+    return Result(join.join(res))
 
 def wc(type, /, *, stdin=None, pathname=None, encoding=None, errors=None):
     assert type in ('char', 'word', 'line'), 'valid wc type: char, word, line'
@@ -591,8 +595,8 @@ class Result:
     def select(self, *nums):
         return select(*nums, stdin=self._stdout)
 
-    def cut(self, *, delim=r'\s+', maxsplit=0, fields=(slice(0, None), ), join_by=' '):
-        return cut(delim=delim, maxsplit=maxsplit, fields=fields, join_by=join_by, stdin=self._stdout)
+    def cut(self, *, delim=r'\s+', maxsplit=0, fields=(slice(0, None), ), join=' ', format=None):
+        return cut(delim=delim, maxsplit=maxsplit, fields=fields, join=join, format=format, stdin=self._stdout)
 
     def sed(self, pattern, repl, /, *, count=0, ignorecase=False):
         return sed(pattern, repl, count=count, ignorecase=ignorecase, stdin=self._stdout)
@@ -601,10 +605,10 @@ class Result:
         foreach(type, proc, stdin=self._stdout)
         return self
 
-    def xargs(self, fmt, /, *, encoding=None, errors=None):
+    def xargs(self, format, /, *, encoding=None, errors=None):
         """
         simulate `xargs` command.
-            fmt: command line format, '{line}' in `fmt` will be replaced by each line of string
+            format: command line format, '{line}' in `format` will be replaced by each line of string
             
         example:
             run('find . -name \\*.txt').xargs('echo {line} && cat {line}') # echo and cat all .txt files
@@ -616,7 +620,7 @@ class Result:
         for line in self._stdout.splitlines():
             if not (line and not line.isspace()):
                 continue
-            res = run(fmt.format(line=line), encoding=encoding, errors=errors)
+            res = run(format.format(line=line), encoding=encoding, errors=errors)
             if not res:
                 returncode = 1
             stdout.append(res.stdout)
@@ -629,8 +633,8 @@ class Result:
     def dedent(self):
         return Result(textwrap.dedent(self._stdout))
 
-    def compact(self, *, strip=True, remove_empty_line=True, join_by=' '):
-        return compact(strip=strip, remove_empty_line=remove_empty_line, join_by=join_by, stdin=self._stdout)
+    def compact(self, *, strip=True, remove_empty_line=True, join=' '):
+        return compact(strip=strip, remove_empty_line=remove_empty_line, join=join, stdin=self._stdout)
 
     def wc(self, type, /):
         return wc(type, stdin=self._stdout)
@@ -694,8 +698,10 @@ if __name__ == '__main__':
     assert_eq('around pattern', res.around('t2', 1).stdout, 't1\nt2\nt3')
 
     res = Result("1, 2, 3, 4, 5, 6\nt1,    t2,t3, t4, t5, t6, t7, t8")
-    assert_eq('cut', res.cut(delim=r',\s*', fields=(1, range(2, 4), slice(-2, None)), join_by=' ').stdout,
+    assert_eq('cut', res.cut(delim=r',\s*', fields=(1, range(2, 4), slice(-2, None))).stdout,
               '2 3 4 5 6\nt2 t3 t4 t7 t8')
+    assert_eq('cut', res.cut(delim=r',\s*', fields=(1, range(2, 4), slice(-2, None)), format='{0}x{4}').stdout,
+              '2x6\nt2xt8')
 
     res = Result("Name:   Tony\nAge: \t 12")
     assert_eq('sed', res.sed(r'\s+', ' ').stdout, 'Name: Tony\nAge: 12')
@@ -723,8 +729,8 @@ if __name__ == '__main__':
 
     res = Result('1 \n\n 2\n 3')
     assert_eq('compact with strip', res.compact().stdout, '1 2 3')
-    assert_eq('compact without strip', res.compact(strip=False, join_by=',').stdout, '1 , 2, 3')
-    assert_eq('compact without remove empty line', res.compact(remove_empty_line=False, join_by=',').stdout, '1,,2,3')
+    assert_eq('compact without strip', res.compact(strip=False, join=',').stdout, '1 , 2, 3')
+    assert_eq('compact without remove empty line', res.compact(remove_empty_line=False, join=',').stdout, '1,,2,3')
 
     res = Result('1 \n 2\n 3')
     assert_eq('wc char', res.wc('char').stdout, '8')
