@@ -76,19 +76,17 @@ def _assert_exclusive(**kwargs):
             found += 1
     assert found == 1, f'{found} argument(s) provided, one and only one argument is required: {", ".join(kwargs.keys())}'
 
-def grep(pattern, /, *, ignorecase=False, invert=False, group_sep=' ', stdin=None, pathname=None, encoding=None, errors=None):
+def grep(pattern, /, *, ignorecase=False, invert=False, stdin=None, pathname=None, encoding=None, errors=None):
     """
     simulate `egrep` command.
-        pattern: regular expression, if group is used, matched groups are joined by `group_sep`
+        pattern: regular expression
         ignorecase: ignore case when search pattern
         invert: invert selection
-        group_sep: separator of groups
-        
+
     example:
-        grep(r'(\S+):\s+(\S+)', group_sep=': ', stdin='  Name:   Tony\n  Age:    12')
+        grep(r'Name:\s+\w+', stdin='  Name:   Tony\n  Age:    12')
         ===>
-        Name: Tony
-        Age: 12
+        Name:   Tony
     """
     _assert_exclusive(stdin=stdin, pathname=pathname)
     if pathname:
@@ -106,8 +104,6 @@ def grep(pattern, /, *, ignorecase=False, invert=False, group_sep=' ', stdin=Non
         m = re.search(pattern, line, flags)
         if m:
             if not invert:
-                if m.groups():
-                    line = group_sep.join(m.groups())
                 res.append(line)
         else:
             if invert:
@@ -308,6 +304,43 @@ def around(index, count, /, *, ignorecase=False, invert=False, stdin=None, pathn
         indexes = _find(lines, index, ignorecase=ignorecase, invert=invert)
         indexes = _around(*indexes, count=count, length=len(lines))
     return Result('\n'.join(_select(lines, *indexes)))
+
+def extract(pattern, /, *, ignorecase=False, join=' ', format=None, stdin=None, pathname=None, encoding=None, errors=None):
+    """
+    find matched string, matched string groups are formatted by `format` (if provided) or joined by `join`.
+        pattern: regular expression
+        ignorecase: ignore case when search pattern
+
+    example:
+        extract(r'(\w+):\s+(\w+)', stdin='  Name:   Tony\n  Age:    12', format='{0}={1}')
+        ===>
+        Name=Tony
+        Age=12
+    """
+    _assert_exclusive(stdin=stdin, pathname=pathname)
+    if pathname:
+        res = cat(pathname, encoding=encoding, errors=errors)
+        if not res:
+            return res
+        text = res.stdout
+    else:
+        text = stdin
+    flags = 0
+    if ignorecase:
+        flags |= re.IGNORECASE
+    res = []
+    for line in text.splitlines():
+        m = re.search(pattern, line, flags)
+        if m:
+            assert m.groups()
+            if format is not None:
+                res.append(format.format(*m.groups()))
+            else:
+                res.append(join.join(m.groups()))
+    if res:
+        return Result('\n'.join(res))
+    else:
+        return Result('', returncode=1)
 
 def cut(*, delim=r'\s+', maxsplit=0, fields=(slice(0, None), ), join=' ', format=None, stdin=None, pathname=None, encoding=None, errors=None):
     """
@@ -591,8 +624,8 @@ class Result:
         """
         return run(cmdline, stdin=self._stdout, stdout=stdout, stderr=stderr, encoding=encoding, errors=errors)
 
-    def grep(self, pattern, /, *, ignorecase=False, invert=False, group_sep=' '):
-        return grep(pattern, ignorecase=ignorecase, invert=invert, group_sep=group_sep, stdin=self._stdout)
+    def grep(self, pattern, /, *, ignorecase=False, invert=False):
+        return grep(pattern, ignorecase=ignorecase, invert=invert, stdin=self._stdout)
 
     def before(self, index, count, /, *, ignorecase=False, invert=False):
         return before(index, count, ignorecase=ignorecase, invert=invert, stdin=self._stdout)
@@ -605,6 +638,9 @@ class Result:
 
     def select(self, *nums):
         return select(*nums, stdin=self._stdout)
+
+    def extract(self, pattern, /, *, ignorecase=False, join=' ', format=None):
+        return extract(pattern, ignorecase=ignorecase, join=join, format=format, stdin=self._stdout)
 
     def cut(self, *, delim=r'\s+', maxsplit=0, fields=(slice(0, None), ), join=' ', format=None):
         return cut(delim=delim, maxsplit=maxsplit, fields=fields, join=join, format=format, stdin=self._stdout)
@@ -690,7 +726,7 @@ if __name__ == '__main__':
     res = Result('  Name:   Tony\n  Age:    12')
     assert_eq('grep', res.grep(r'Name:').stdout, '  Name:   Tony')
     assert_eq('invert grep', res.grep(r'Name:', invert=True).stdout, '  Age:    12')
-    assert_eq('group pattern grep', res.grep(r'(\S+):\s+(\S+)', group_sep=': ').stdout, 'Name: Tony\nAge: 12')
+    assert_eq('extract', res.extract(r'(\w+):\s+(\w+)', format='{0}={1}').stdout, 'Name=Tony\nAge=12')
     res = Result('a\n  \n\nb\n')
     assert_eq('invert grep preserve whitespace', res.grep(r'a', invert=True).stdout, '  \n\nb')
     assert_eq('grep nothing', res.grep(r'Name').__bool__(), False)
