@@ -8,11 +8,8 @@ import locale
 __all__ = [
     'run',
     'cat',
-    'grep',
-    'before',
-    'after',
-    'around',
     'select',
+    'grep',
     'cut',
     'sed',
     'foreach',
@@ -79,44 +76,12 @@ def _get_input(*, stdin=None, pathname=None, encoding=None, errors=None, newline
     if pathname is not None:
         assert isinstance(pathname, str)
         narg += 1
-    assert narg == 1, 'stdin or pathname, only one is accepted'
+    assert narg == 1, 'stdin or pathname, only one arg is accepted'
     if pathname:
         res = cat(pathname, encoding=encoding, errors=errors, newline=newline)
         return res.stdout if res else res
     else:
         return stdin
-
-def grep(pattern, /, *, ignorecase=False, invert=False, stdin=None, pathname=None, encoding=None, errors=None):
-    """
-    simulate `egrep` command.
-        pattern: regular expression
-        ignorecase: ignore case when search pattern
-        invert: invert selection
-
-    example:
-        grep(r'Name:\s+\w+', stdin='  Name:   Tony\n  Age:    12')
-        ===>
-        Name:   Tony
-    """
-    text = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
-    if isinstance(text, Result):
-        return text
-    flags = 0
-    if ignorecase:
-        flags |= re.IGNORECASE
-    res = []
-    for line in text.splitlines():
-        m = re.search(pattern, line, flags)
-        if m:
-            if not invert:
-                res.append(line)
-        else:
-            if invert:
-                res.append(line)
-    if res:
-        return Result('\n'.join(res))
-    else:
-        return Result('', returncode=1)
 
 def _find(lines, pattern, /, *, ignorecase=False, invert=False):
     """
@@ -136,7 +101,7 @@ def _find(lines, pattern, /, *, ignorecase=False, invert=False):
                 indexes.append(i)
     return indexes
 
-def _select(src, *nums):
+def _select(src, nums):
     res = []
     for num in nums:
         if isinstance(num, slice):
@@ -160,9 +125,9 @@ def select(*nums, stdin=None, pathname=None, encoding=None, errors=None):
     if isinstance(text, Result):
         return text
     lines = text.splitlines()
-    return Result('\n'.join(_select(lines, *nums)))
+    return Result('\n'.join(_select(lines, nums)))
 
-def _before(*indexes, count, length):
+def _before(indexes, count, length):
     res = set()
     for index in indexes:
         if index < 0:
@@ -176,35 +141,7 @@ def _before(*indexes, count, length):
         res.update(range(start, stop))
     return sorted(res)
 
-def before(index, count, /, *, ignorecase=False, invert=False, stdin=None, pathname=None, encoding=None, errors=None):
-    """
-    simulate `grep -B` command.
-        index: line index or regexp
-        count: line count before the matched line
-
-    example:
-        before(2, 2, stdin="t0\nt1\nt2\nt3\nt4\nt5\nt6")
-        or
-        before('t2', 2, stdin="t0\nt1\nt2\nt3\nt4\nt5\nt6")
-        ===>
-        t0
-        t1
-        t2
-    """
-    assert isinstance(index, (int, str))
-    text = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
-    if isinstance(text, Result):
-        return text
-    lines = text.splitlines()
-    if isinstance(index, int):
-        indexes = _before(index, count=count, length=len(lines))
-    else:
-        # index is regexp pattern
-        indexes = _find(lines, index, ignorecase=ignorecase, invert=invert)
-        indexes = _before(*indexes, count=count, length=len(lines))
-    return Result('\n'.join(_select(lines, *indexes)))
-
-def _after(*indexes, count, length):
+def _after(indexes, count, length):
     res = set()
     for index in indexes:
         if index < 0:
@@ -218,35 +155,7 @@ def _after(*indexes, count, length):
         res.update(range(start, stop))
     return sorted(res)
 
-def after(index, count, /, *, ignorecase=False, invert=False, stdin=None, pathname=None, encoding=None, errors=None):
-    """
-    simulate `grep -A` command.
-        index: line index or regexp
-        count: line count after the matched line
-
-    example:
-        after(2, 2, stdin="t0\nt1\nt2\nt3\nt4\nt5\nt6")
-        or
-        after('t2', 2, stdin="t0\nt1\nt2\nt3\nt4\nt5\nt6")
-        ===>
-        t2
-        t3
-        t4
-    """
-    assert isinstance(index, (int, str))
-    text = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
-    if isinstance(text, Result):
-        return text
-    lines = text.splitlines()
-    if isinstance(index, int):
-        indexes = _after(index, count=count, length=len(lines))
-    else:
-        # index is regexp pattern
-        indexes = _find(lines, index, ignorecase=ignorecase, invert=invert)
-        indexes = _after(*indexes, count=count, length=len(lines))
-    return Result('\n'.join(_select(lines, *indexes)))
-
-def _around(*indexes, count, length):
+def _around(indexes, count, length):
     res = set()
     for index in indexes:
         if index < 0:
@@ -262,34 +171,62 @@ def _around(*indexes, count, length):
         res.update(range(start, stop))
     return sorted(res)
 
-def around(index, count, /, *, ignorecase=False, invert=False, stdin=None, pathname=None, encoding=None, errors=None):
+def grep(pattern, /, *, ignorecase=False, invert=False, before=None, around=None, after=None, stdin=None, pathname=None, encoding=None, errors=None):
     """
-    simulate `grep -C` command.
-        index: line index or regexp
-        count: line count around the matched line
+    simulate `egrep` command.
+        pattern: regular expression
+        ignorecase: ignore case when search pattern
+        invert: invert selection
+        before: line count before the matched line, simulate `grep -B` command
+        around: line count around the matched line, simulate `grep -C` command
+        after: line count after the matched line, simulate `grep -A` command
 
     example:
-        around(2, 1, stdin="t0\nt1\nt2\nt3\nt4\nt5\nt6")
-        or
-        around('t2', 1, stdin="t0\nt1\nt2\nt3\nt4\nt5\nt6")
+        grep(r'Name:\s+\w+', stdin='  Name:   Tony\n  Age:    12')
+        ===>
+        Name:   Tony
+
+        grep('t2', before=2, stdin="t0\nt1\nt2\nt3\nt4\nt5\nt6")
+        ===>
+        t0
+        t1
+        t2
+
+        grep('t2', around=1, stdin="t0\nt1\nt2\nt3\nt4\nt5\nt6")
         ===>
         t1
         t2
         t3
+
+        grep('t2', after=2, stdin="t0\nt1\nt2\nt3\nt4\nt5\nt6")
+        ===>
+        t2
+        t3
+        t4
     """
-    assert isinstance(index, (int, str))
+    narg = 0
+    for n in (before, around, after):
+        if n is not None:
+            assert isinstance(n, int)
+            narg += 1
+    assert narg <= 1, 'before/around/after, not more than one arg'
     text = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
     if isinstance(text, Result):
         return text
     lines = text.splitlines()
-    if isinstance(index, int):
-        indexes = _around(index, count=count, length=len(lines))
-    else:
-        # index is regexp pattern
-        indexes = _find(lines, index, ignorecase=ignorecase, invert=invert)
-        indexes = _around(*indexes, count=count, length=len(lines))
-    return Result('\n'.join(_select(lines, *indexes)))
+    indexes = _find(lines, pattern, ignorecase=ignorecase, invert=invert)
+    if before is not None:
+        indexes = _before(indexes, before, len(lines))
+    elif around is not None:
+        indexes = _around(indexes, around, len(lines))
+    elif after is not None:
+        indexes = _after(indexes, after, len(lines))
 
+    if indexes:
+        return Result('\n'.join(_select(lines, indexes)))
+    else:
+        return Result('', returncode=1)
+    
 def extract(pattern, /, *, ignorecase=False, join_group=' ', format_group=None, stdin=None, pathname=None, encoding=None, errors=None):
     """
     find matched string, matched string groups are formatted by `format_group` (if provided) or joined by `join_group`.
@@ -342,7 +279,7 @@ def cut(*, delim=r'\s+', maxsplit=0, fields=(slice(0, None), ), join_field=' ', 
     res = []
     for line in text.splitlines():
         #parts = [p for p in re.split(delim, line) if (p and not p.isspace())] # strip blank field
-        parts = _select(re.split(delim, line, maxsplit), *fields)
+        parts = _select(re.split(delim, line, maxsplit), fields)
         if format_field is not None:
             res.append(format_field.format(*parts))
         else:
@@ -573,20 +510,11 @@ class Result:
         """
         return run(cmdline, stdin=self._stdout, stdout=stdout, stderr=stderr, encoding=encoding, errors=errors)
 
-    def grep(self, pattern, /, *, ignorecase=False, invert=False):
-        return grep(pattern, ignorecase=ignorecase, invert=invert, stdin=self._stdout)
-
-    def before(self, index, count, /, *, ignorecase=False, invert=False):
-        return before(index, count, ignorecase=ignorecase, invert=invert, stdin=self._stdout)
-
-    def after(self, index, count, /, *, ignorecase=False, invert=False):
-        return after(index, count, ignorecase=ignorecase, invert=invert, stdin=self._stdout)
-
-    def around(self, index, count, /, *, ignorecase=False, invert=False):
-        return around(index, count, ignorecase=ignorecase, invert=invert, stdin=self._stdout)
-
     def select(self, *nums):
         return select(*nums, stdin=self._stdout)
+
+    def grep(self, pattern, /, *, ignorecase=False, invert=False, before=None, around=None, after=None):
+        return grep(pattern, ignorecase=ignorecase, invert=invert, before=before, around=around, after=after, stdin=self._stdout)
 
     def extract(self, pattern, /, *, ignorecase=False, join_group=' ', format_group=None):
         return extract(pattern, ignorecase=ignorecase, join_group=join_group, format_group=format_group, stdin=self._stdout)
@@ -673,8 +601,8 @@ class Result:
             return repr(text)
 
 Result.run.__doc__ = run.__doc__
-Result.grep.__doc__ = grep.__doc__
 Result.select.__doc__ = select.__doc__
+Result.grep.__doc__ = grep.__doc__
 Result.cut.__doc__ = cut.__doc__
 Result.sed.__doc__ = sed.__doc__
 Result.foreach.__doc__ = foreach.__doc__
@@ -689,6 +617,9 @@ Result.asnum.__doc__ = asnum.__doc__
 if __name__ == '__main__':
     def assert_eq(test, real, expect):
         assert real == expect, f'{test} failed\nExpect:\n{repr(expect)}\nReal:\n{repr(real)}'
+    res = Result("0\n1\n2\n3\n4\n5")
+    assert_eq('select', res.select(1, -1, range(2,4), slice(-3, -1)).stdout, '1\n5\n2\n3\n3\n4')
+
     res = Result('  Name:   Tony\n  Age:    12')
     assert_eq('grep', res.grep(r'Name:').stdout, '  Name:   Tony')
     assert_eq('invert grep', res.grep(r'Name:', invert=True).stdout, '  Age:    12')
@@ -698,16 +629,11 @@ if __name__ == '__main__':
     assert_eq('grep nothing', res.grep(r'Name').__bool__(), False)
     assert_eq('invert grep nothing', res.grep(r'Name', invert=True).stdout, 'a\n  \n\nb')
 
-    res = Result("0\n1\n2\n3\n4\n5")
-    assert_eq('select', res.select(1, -1, range(2,4), slice(-3, -1)).stdout, '1\n5\n2\n3\n3\n4')
-
     res = Result("t0\nt1\nt2\nt3\nt4\nt5\nt6")
-    assert_eq('before line', res.before(2, 2).stdout, 't0\nt1\nt2')
-    assert_eq('before pattern', res.before('t2', 2).stdout, 't0\nt1\nt2')
-    assert_eq('after line', res.after(2, 2).stdout, 't2\nt3\nt4')
-    assert_eq('after pattern', res.after('t2', 2).stdout, 't2\nt3\nt4')
-    assert_eq('around line', res.around(2, 1).stdout, 't1\nt2\nt3')
-    assert_eq('around pattern', res.around('t2', 1).stdout, 't1\nt2\nt3')
+    assert_eq('before pattern', res.grep('t2', before=2).stdout, 't0\nt1\nt2')
+    assert_eq('after pattern', res.grep('t2', after=2).stdout, 't2\nt3\nt4')
+    assert_eq('around pattern', res.grep('t2', around=1).stdout, 't1\nt2\nt3')
+    assert_eq('grep nothing around pattern', res.grep('tx', around=1).__bool__(), False)
 
     res = Result("1, 2, 3, 4, 5, 6\nt1,    t2,t3, t4, t5, t6, t7, t8")
     assert_eq('cut', res.cut(delim=r',\s*', fields=(1, range(2, 4), slice(-2, None))).stdout,
