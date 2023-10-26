@@ -17,9 +17,11 @@ __all__ = [
     'sed',
     'foreach',
     'compact',
+    'extract',
     'wc',
     'uniq',
     'sort',
+    'tee',
     'asnum',
     'Result',
     'STDOUT',
@@ -731,6 +733,20 @@ class Result:
             return repr('\n'.join(res))
         else:
             return repr(text)
+
+Result.run.__doc__ = run.__doc__
+Result.grep.__doc__ = grep.__doc__
+Result.select.__doc__ = select.__doc__
+Result.cut.__doc__ = cut.__doc__
+Result.sed.__doc__ = sed.__doc__
+Result.foreach.__doc__ = foreach.__doc__
+Result.compact.__doc__ = compact.__doc__
+Result.extract.__doc__ = extract.__doc__
+Result.wc.__doc__ = wc.__doc__
+Result.uniq.__doc__ = uniq.__doc__
+Result.sort.__doc__ = sort.__doc__
+Result.tee.__doc__ = tee.__doc__
+Result.asnum.__doc__ = asnum.__doc__
 
 if __name__ == '__main__':
     def assert_eq(test, real, expect):
