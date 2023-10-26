@@ -71,12 +71,20 @@ def cat(pathname, /, *, encoding=None, errors=None, newline=None):
     except Exception as exp:
         return Result('', returncode=1, stderr=str(exp))
 
-def _assert_exclusive(**kwargs):
-    found = 0
-    for kw in kwargs:
-        if kwargs[kw] is not None:
-            found += 1
-    assert found == 1, f'{found} argument(s) provided, one and only one argument is required: {", ".join(kwargs.keys())}'
+def _get_input(*, stdin=None, pathname=None, encoding=None, errors=None, newline=None):
+    narg = 0
+    if stdin is not None:
+        assert isinstance(stdin, str)
+        narg += 1
+    if pathname is not None:
+        assert isinstance(pathname, str)
+        narg += 1
+    assert narg == 1, 'stdin or pathname, only one is accepted'
+    if pathname:
+        res = cat(pathname, encoding=encoding, errors=errors, newline=newline)
+        return res.stdout if res else res
+    else:
+        return stdin
 
 def grep(pattern, /, *, ignorecase=False, invert=False, stdin=None, pathname=None, encoding=None, errors=None):
     """
@@ -90,14 +98,9 @@ def grep(pattern, /, *, ignorecase=False, invert=False, stdin=None, pathname=Non
         ===>
         Name:   Tony
     """
-    _assert_exclusive(stdin=stdin, pathname=pathname)
-    if pathname:
-        res = cat(pathname, encoding=encoding, errors=errors)
-        if not res:
-            return res
-        text = res.stdout
-    else:
-        text = stdin
+    text = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
+    if isinstance(text, Result):
+        return text
     flags = 0
     if ignorecase:
         flags |= re.IGNORECASE
@@ -153,14 +156,9 @@ def select(*nums, stdin=None, pathname=None, encoding=None, errors=None):
         ===>
         1,5,2,3,3,4
     """
-    _assert_exclusive(stdin=stdin, pathname=pathname)
-    if pathname:
-        res = cat(pathname, encoding=encoding, errors=errors)
-        if not res:
-            return res
-        text = res.stdout
-    else:
-        text = stdin
+    text = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
+    if isinstance(text, Result):
+        return text
     lines = text.splitlines()
     return Result('\n'.join(_select(lines, *nums)))
 
@@ -194,14 +192,9 @@ def before(index, count, /, *, ignorecase=False, invert=False, stdin=None, pathn
         t2
     """
     assert isinstance(index, (int, str))
-    _assert_exclusive(stdin=stdin, pathname=pathname)
-    if pathname:
-        res = cat(pathname, encoding=encoding, errors=errors)
-        if not res:
-            return res
-        text = res.stdout
-    else:
-        text = stdin
+    text = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
+    if isinstance(text, Result):
+        return text
     lines = text.splitlines()
     if isinstance(index, int):
         indexes = _before(index, count=count, length=len(lines))
@@ -241,14 +234,9 @@ def after(index, count, /, *, ignorecase=False, invert=False, stdin=None, pathna
         t4
     """
     assert isinstance(index, (int, str))
-    _assert_exclusive(stdin=stdin, pathname=pathname)
-    if pathname:
-        res = cat(pathname, encoding=encoding, errors=errors)
-        if not res:
-            return res
-        text = res.stdout
-    else:
-        text = stdin
+    text = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
+    if isinstance(text, Result):
+        return text
     lines = text.splitlines()
     if isinstance(index, int):
         indexes = _after(index, count=count, length=len(lines))
@@ -290,14 +278,9 @@ def around(index, count, /, *, ignorecase=False, invert=False, stdin=None, pathn
         t3
     """
     assert isinstance(index, (int, str))
-    _assert_exclusive(stdin=stdin, pathname=pathname)
-    if pathname:
-        res = cat(pathname, encoding=encoding, errors=errors)
-        if not res:
-            return res
-        text = res.stdout
-    else:
-        text = stdin
+    text = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
+    if isinstance(text, Result):
+        return text
     lines = text.splitlines()
     if isinstance(index, int):
         indexes = _around(index, count=count, length=len(lines))
@@ -319,14 +302,9 @@ def extract(pattern, /, *, ignorecase=False, join_group=' ', format_group=None, 
         Name=Tony
         Age=12
     """
-    _assert_exclusive(stdin=stdin, pathname=pathname)
-    if pathname:
-        res = cat(pathname, encoding=encoding, errors=errors)
-        if not res:
-            return res
-        text = res.stdout
-    else:
-        text = stdin
+    text = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
+    if isinstance(text, Result):
+        return text
     flags = 0
     if ignorecase:
         flags |= re.IGNORECASE
@@ -358,14 +336,9 @@ def cut(*, delim=r'\s+', maxsplit=0, fields=(slice(0, None), ), join_field=' ', 
         Name: Tony
         Age: 12
     """
-    _assert_exclusive(stdin=stdin, pathname=pathname)
-    if pathname:
-        res = cat(pathname, encoding=encoding, errors=errors)
-        if not res:
-            return res
-        text = res.stdout
-    else:
-        text = stdin
+    text = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
+    if isinstance(text, Result):
+        return text
     res = []
     for line in text.splitlines():
         #parts = [p for p in re.split(delim, line) if (p and not p.isspace())] # strip blank field
@@ -396,14 +369,9 @@ def sed(pattern, repl, /, *, count=0, ignorecase=False, stdin=None, pathname=Non
         Name: "Tony"
         Age: "12"
     """
-    _assert_exclusive(stdin=stdin, pathname=pathname)
-    if pathname:
-        res = cat(pathname, encoding=encoding, errors=errors)
-        if not res:
-            return res
-        text = res.stdout
-    else:
-        text = stdin
+    text = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
+    if isinstance(text, Result):
+        return text
     flags = 0
     if ignorecase:
         flags |= re.IGNORECASE
@@ -421,14 +389,9 @@ def foreach(type, proc, /, *, stdin=None, pathname=None, encoding=None, errors=N
         proc: signature: proc(text:str|None) -> str|None
     """
     assert type in ('char', 'word', 'line'), 'valid iterate type: char, word, line'
-    _assert_exclusive(stdin=stdin, pathname=pathname)
-    if pathname:
-        res = cat(pathname, encoding=encoding, errors=errors, newline='') # do not translate newline for foreach('char')
-        if not res:
-            return res
-        text = res.stdout
-    else:
-        text = stdin
+    text = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors, newline='') # do not translate newline for foreach('char')
+    if isinstance(text, Result):
+        return text
     def iterate(txts, res):
         for txt in txts:
             new = proc(txt)
@@ -450,14 +413,9 @@ def foreach(type, proc, /, *, stdin=None, pathname=None, encoding=None, errors=N
     return Result(''.join(res))
 
 def compact(*, strip=True, remove_empty_line=True, join_line=' ', stdin=None, pathname=None, encoding=None, errors=None):
-    _assert_exclusive(stdin=stdin, pathname=pathname)
-    if pathname:
-        res = cat(pathname, encoding=encoding, errors=errors)
-        if not res:
-            return res
-        text = res.stdout
-    else:
-        text = stdin
+    text = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
+    if isinstance(text, Result):
+        return text
     res = []
     for line in text.splitlines():
         if strip:
@@ -469,14 +427,9 @@ def compact(*, strip=True, remove_empty_line=True, join_line=' ', stdin=None, pa
 
 def wc(type, /, *, stdin=None, pathname=None, encoding=None, errors=None):
     assert type in ('char', 'word', 'line'), 'valid wc type: char, word, line'
-    _assert_exclusive(stdin=stdin, pathname=pathname)
-    if pathname:
-        res = cat(pathname, encoding=encoding, errors=errors, newline='') # do not translate newline for wc('char')
-        if not res:
-            return res
-        text = res.stdout
-    else:
-        text = stdin
+    text = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors, newline='') # do not translate newline for wc('char')
+    if isinstance(text, Result):
+        return text
     if type == 'char':
         length = len(text)
     elif type == 'word':
@@ -486,14 +439,9 @@ def wc(type, /, *, stdin=None, pathname=None, encoding=None, errors=None):
     return Result(str(length))
 
 def uniq(*, stdin=None, pathname=None, encoding=None, errors=None):
-    _assert_exclusive(stdin=stdin, pathname=pathname)
-    if pathname:
-        res = cat(pathname, encoding=encoding, errors=errors)
-        if not res:
-            return res
-        text = res.stdout
-    else:
-        text = stdin
+    text = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
+    if isinstance(text, Result):
+        return text
     lines = text.splitlines()
     if not lines:
         return Result('')
@@ -504,14 +452,9 @@ def uniq(*, stdin=None, pathname=None, encoding=None, errors=None):
     return Result('\n'.join(res))
 
 def sort(*, ascending=True, stdin=None, pathname=None, encoding=None, errors=None):
-    _assert_exclusive(stdin=stdin, pathname=pathname)
-    if pathname:
-        res = cat(pathname, encoding=encoding, errors=errors)
-        if not res:
-            return res
-        text = res.stdout
-    else:
-        text = stdin
+    text = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
+    if isinstance(text, Result):
+        return text
     lines = text.splitlines() # sorted(["0\n", "0"]) => ["0", "0\n"], so do not keep newline
     return Result('\n'.join(sorted(lines, reverse=not ascending)))
 
@@ -531,14 +474,9 @@ def asnum(*, int_base=10, dim_reduction=False, stdin=None, pathname=None, encodi
         int_base: base for integer, if it is not prefixed with 0xX,0bB,0oO
         dim_reduction: when true, reduce dimension, return single if only one number, else return one-dimension list
     """
-    _assert_exclusive(stdin=stdin, pathname=pathname)
-    if pathname:
-        res = cat(pathname, encoding=encoding, errors=errors)
-        if not res:
-            return None
-        text = res.stdout
-    else:
-        text = stdin
+    text = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
+    if isinstance(text, Result):
+        return None
     nums = []
     token_regex = '|'.join('(?P<%s>%s)' % pair for pair in [
         ('hex', r'[+-]?0[xX][0-9a-fA-F]+'),
