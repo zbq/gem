@@ -36,8 +36,7 @@ cat('usage-record.txt').grep('Time:2022-10-28 10', around=3).extract(r'CPU:(\d+%
 
 CPU average usage around 10am:
 ```python
-res = cat('usage-record.txt').grep('Time:2022-10-28 10', around=3).extract(r'CPU:(\d+%)')
-sum(res.asnum(dim_reduction=True)) / res.wc('line', asnum=True)
+cat('usage-record.txt').grep('Time:2022-10-28 10', around=3).extract(r'CPU:(\d+%)').mean()
 # ==>
 15.71
 ```
