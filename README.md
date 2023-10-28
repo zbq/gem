@@ -56,31 +56,29 @@ AnonHugePages of xxxx: nnn MB
 AnonHugePages of yyyy: nnn MB
 ```
 
-3. To show content of first 5 conf files under /etc/sh/, you can do it with bash
+3. To show content of first 5 conf files under /etc/sh/, with bash
 ```bash
 find /etc/sh -name *.conf -type f | head -n 5 | xargs cat
 ```
-and you can do it with sh.py
+or with sh.py
 ```python
 run('find /etc/sh -name *.conf -type f').pipe('head -n 5').xargs('echo {line} && cat {line}').print()
 ```
 
-4. Create directory is not exist
-with bash
+4. Create directory if not exist, with bash
 ```bash
 [ -d /etc/sh ] || mkdir /etc/sh
 ```
-with sh.py
+or with sh.py
 ```python
 run('test -d /etc/sh').otherwise().run('mkdir /etc/sh')
 ```
 
-5. Show conf file content if exist
-with bash
+5. Show conf file content if exist, with bash
 ```bash
 [ -f /etc/sh/sh.conf ] && cat /etc/sh/sh.conf
 ```
-with sh.py
+or with sh.py
 ```python
 run('test -f /etc/sh/sh.conf').then().run('cat /etc/sh/sh.conf').print()
 # or
