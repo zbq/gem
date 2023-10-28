@@ -4,6 +4,8 @@ import sys
 import re
 import textwrap
 import locale
+import math
+import statistics
 
 __all__ = [
     'run',
@@ -20,6 +22,8 @@ __all__ = [
     'sort',
     'tee',
     'asnum',
+    'sum',
+    'mean',
     'Result',
     'STDOUT',
     'DEVNULL',
@@ -376,8 +380,7 @@ def wc(type, /, *, asnum=False, stdin=None, pathname=None, encoding=None, errors
     """
     assert type in ('char', 'word', 'line'), 'valid wc type: char, word, line'
     text, err = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors, newline='') # do not translate newline for wc('char')
-    if err:
-        return None if asnum else text
+    assert not err, f'failed to read from {pathname}'
     if type == 'char':
         length = len(text)
     elif type == 'word':
@@ -415,16 +418,15 @@ def tee(pathname, /, *, stdin, append=False, encoding=None, errors=None, newline
     except Exception as exp:
         return Result('', returncode=1, stderr=str(exp))
 
-def asnum(*, int_base=10, dim_reduction=False, stdin=None, pathname=None, encoding=None, errors=None):
+def asnum(*, int_base=10, flatten=True, stdin=None, pathname=None, encoding=None, errors=None):
     """
-    find and convert to number, return None if can not read file.
+    find and convert to number
 
         int_base: base for integer, if it is not prefixed with 0xX,0bB,0oO
-        dim_reduction: when true, reduce dimension, return single if only one number, else return one-dimension list
+        flatten: if true, return [n, n, ...] instead of [[n, n, ...], [n, n, ...], ...]
     """
     text, err = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
-    if err:
-        return None
+    assert not err, f'failed to read from {pathname}'
     nums = []
     token_regex = '|'.join('(?P<%s>%s)' % pair for pair in [
         ('hex', r'[+-]?0[xX][0-9a-fA-F]+'),
@@ -435,7 +437,7 @@ def asnum(*, int_base=10, dim_reduction=False, stdin=None, pathname=None, encodi
         ('int', r'[+-]?\d+'),
         ])
     for line in text.splitlines():
-        if dim_reduction:
+        if flatten:
             tmp = nums
         else:
             tmp = []
@@ -446,15 +448,20 @@ def asnum(*, int_base=10, dim_reduction=False, stdin=None, pathname=None, encodi
                 value = int(value, 0)
             elif kind in ('float', 'efloat'):
                 value = float(value)
-            elif kind == 'int':
+            else: # int
                 value = int(value, int_base)
             tmp.append(value)
-        if not dim_reduction and tmp: # skip empty list
+        if not flatten and tmp: # skip empty list
             nums.append(tmp)
-    if dim_reduction and len(nums) == 1:
-        return nums[0]
-    else:
-        return nums
+    return nums
+
+def sum(*, int_base=10, stdin=None, pathname=None, encoding=None, errors=None):
+    nums = asnum(int_base=int_base, flatten=True, stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
+    return math.fsum(nums)
+
+def mean(*, int_base=10, stdin=None, pathname=None, encoding=None, errors=None):
+    nums = asnum(int_base=int_base, flatten=True, stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
+    return statistics.mean(nums)
 
 class Result:
     class NOP:
@@ -582,8 +589,14 @@ class Result:
     def tee(self, pathname, /, *, append=False, encoding=None, errors=None, newline=None):
         return tee(pathname, append=append, stdin=self._stdout, encoding=encoding, errors=errors, newline=newline)
 
-    def asnum(self, /, *, int_base=10, dim_reduction=False):
-        return asnum(int_base=int_base, dim_reduction=dim_reduction, stdin=self._stdout)
+    def asnum(self, /, *, int_base=10, flatten=True):
+        return asnum(int_base=int_base, flatten=flatten, stdin=self._stdout)
+
+    def sum(self, /, *, int_base=10):
+        return sum(int_base=int_base, stdin=self._stdout)
+
+    def mean(self, /, *, int_base=10):
+        return mean(int_base=int_base, stdin=self._stdout)
 
     def print(self, *, prolog=None, body_end=None, epilog=None, file=sys.stdout):
         """
@@ -691,11 +704,12 @@ if __name__ == '__main__':
     assert_eq('sort descending', res.sort(ascending=False).stdout, '3\n2\n1')
 
     res = Result('hello1,-2,- 3x\n   \nhello x3e1 3.1 3.1e1\n0x12 -0o666 +0b11')
-    assert_eq('asnum', res.asnum(), [[1,-2,3], [3e1, 3.1, 3.1e1], [0x12, -0o666, 0b11]])
-    assert_eq('asnum reduce dim', res.asnum(dim_reduction=True), [1,-2,3, 3e1, 3.1, 3.1e1, 0x12, -0o666, 0b11])
-    res = Result('Age:\n  12')
-    assert_eq('asnum one num', res.asnum(dim_reduction=True), 12)
+    assert_eq('asnum', res.asnum(flatten=False), [[1,-2,3], [3e1, 3.1, 3.1e1], [0x12, -0o666, 0b11]])
+    assert_eq('asnum flatten', res.asnum(), [1,-2,3, 3e1, 3.1, 3.1e1, 0x12, -0o666, 0b11])
 
+    res = Result('1\n2\n3')
+    assert_eq('sum', res.sum(), 6)
+    assert_eq('mean', res.mean(), 2.0)
 
     res = Result('1\n2\n3')
     assert_eq('xargs', res.xargs('echo {line}').stdout, "1\n2\n3\n")
