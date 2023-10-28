@@ -4,8 +4,8 @@
 Try to implement some useful text processing function in the flavor of Linux shell programming.
 
 Here the demos:
-1. Suppose you have a system resource monitor record
-```txt
+1. Suppose you have a system resource monitor record usage-record.txt
+```
 Time:2022-10-28 09:59:30, CPU:10%, Memory:40%
 Time:2022-10-28 09:59:40, CPU:10%, Memory:40%
 Time:2022-10-28 09:59:50, CPU:10%, Memory:50%
@@ -43,7 +43,7 @@ cat('usage-record.txt').grep('Time:2022-10-28 10', around=3).extract(r'CPU:(\d+%
 15.71
 ```
 
-2. Summary of AnonHugePage usage
+2. Show a summary of AnonHugePage usage
 ```python
 def sum_anon(pid):
   if pid is None: # iteration exhausted
@@ -56,31 +56,34 @@ AnonHugePages of xxxx: nnn MB
 AnonHugePages of yyyy: nnn MB
 ```
 
-3. Echo content of files in /root
-```python
-run('ls /root').xargs('echo /root/{line}: ; cat /root/{line}').print()
-```
-
-4. Simulation of |, || and &&
+3. To show content of first 5 conf files under /etc/sh/, you can do it with bash
 ```bash
-find /etc/sh -name *.conf -type f | head -n 1
+find /etc/sh -name *.conf -type f | head -n 5 | xargs cat
 ```
+and you can do it with sh.py
 ```python
-run('find /etc/sh -name *.conf -type f').pipe('head -n 1')
+run('find /etc/sh -name *.conf -type f').pipe('head -n 5').xargs('echo {line} && cat {line}').print()
 ```
 
+4. Create directory is not exist
+with bash
 ```bash
 [ -d /etc/sh ] || mkdir /etc/sh
 ```
+with sh.py
 ```python
 run('test -d /etc/sh').otherwise().run('mkdir /etc/sh')
 ```
 
+5. Show conf file content if exist
+with bash
 ```bash
 [ -f /etc/sh/sh.conf ] && cat /etc/sh/sh.conf
 ```
+with sh.py
 ```python
-run('test -f /etc/sh/sh.conf').then().run('cat /etc/sh/sh.conf')
+run('test -f /etc/sh/sh.conf').then().run('cat /etc/sh/sh.conf').print()
+# or
+run('test -f /etc/sh/sh.conf').then().cat('/etc/sh/sh.conf').print()
 ```
 
-5. 
