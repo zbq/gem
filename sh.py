@@ -372,11 +372,11 @@ def compact(*, strip=True, remove_empty_line=True, join_line=' ', stdin=None, pa
         res.append(line)
     return Result(join_line.join(res))
 
-def wc(type, /, *, asnum=False, stdin=None, pathname=None, encoding=None, errors=None):
+def wc(type, /, *, asnum=True, stdin=None, pathname=None, encoding=None, errors=None):
     """
     return count of 'char/word/line'.
 
-        asnum: if True, convert to number
+        asnum: if true, convert to number
     """
     assert type in ('char', 'word', 'line'), 'valid wc type: char, word, line'
     text, err = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors, newline='') # do not translate newline for wc('char')
@@ -577,7 +577,7 @@ class Result:
     def compact(self, *, strip=True, remove_empty_line=True, join_line=' '):
         return compact(strip=strip, remove_empty_line=remove_empty_line, join_line=join_line, stdin=self._stdout)
 
-    def wc(self, type, /, *, asnum=False):
+    def wc(self, type, /, *, asnum=True):
         return wc(type, asnum=asnum, stdin=self._stdout)
 
     def uniq(self):
@@ -692,9 +692,9 @@ if __name__ == '__main__':
     assert_eq('compact without remove empty line', res.compact(remove_empty_line=False, join_line=',').stdout, '1,,2,3')
 
     res = Result('1 \n 2\n 3')
-    assert_eq('wc char', res.wc('char').stdout, '8')
-    assert_eq('wc word', res.wc('word').stdout, '3')
-    assert_eq('wc line', res.wc('line', asnum=True), 3)
+    assert_eq('wc char', res.wc('char', asnum=False).stdout, '8')
+    assert_eq('wc word', res.wc('word', asnum=False).stdout, '3')
+    assert_eq('wc line', res.wc('line'), 3)
 
     res = Result('1\n1\n2\n 2')
     assert_eq('uniq', res.uniq().stdout, '1\n2\n 2')
