@@ -43,7 +43,7 @@ cat('usage-record.txt').grep('Time:2022-10-28 10', around=3).extract(r'CPU:(\d+%
 15.71
 ```
 
-2. Summary all AnonHugePage usage
+2. Summary of AnonHugePage usage
 ```python
 def sum_anon(pid):
   if pid is None: # iteration exhausted
@@ -56,4 +56,31 @@ AnonHugePages of xxxx: nnn MB
 AnonHugePages of yyyy: nnn MB
 ```
 
-3. 
+3. Echo content of files in /root
+```python
+run('ls /root').xargs('echo /root/{line}: ; cat /root/{line}').print()
+```
+
+4. Simulation of |, || and &&
+```bash
+find /etc/sh -name *.conf -type f | head -n 1
+```
+```python
+run('find /etc/sh -name *.conf -type f').pipe('head -n 1')
+```
+
+```bash
+[ -d /etc/sh ] || mkdir /etc/sh
+```
+```python
+run('test -d /etc/sh').otherwise().run('mkdir /etc/sh')
+```
+
+```bash
+[ -f /etc/sh/sh.conf ] && cat /etc/sh/sh.conf
+```
+```python
+run('test -f /etc/sh/sh.conf').then().run('cat /etc/sh/sh.conf')
+```
+
+5. 
