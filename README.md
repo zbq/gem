@@ -38,7 +38,7 @@ cat('usage-record.txt').grep('Time:2022-10-28 10', around=3).extract(r'CPU:(\d+%
 
 CPU average usage around 10am:
 ```python
-cat('usage-record.txt').grep('Time:2022-10-28 10', around=3).extract(r'CPU:(\d+%)').mean()
+cat('usage-record.txt').grep('Time:2022-10-28 10', around=3).extract(r'CPU:(\d+%)').fmean()
 # ==>
 15.71
 ```
@@ -48,7 +48,7 @@ cat('usage-record.txt').grep('Time:2022-10-28 10', around=3).extract(r'CPU:(\d+%
 def sum_anon(pid):
   if pid is None: # iteration exhausted
     return None
-  s = extract(r'AnonHugePages:\s+(\d\d+) kB', pathname=f'/proc/{pid}/smaps').sum()
+  s = extract(r'AnonHugePages:\s+(\d\d+) kB', pathname=f'/proc/{pid}/smaps').fsum()
   return f'AnonHugePages of {pid}: {s/1024} MB'
 run('ps h -e -o pid').foreach('word', sum_anon).print()
 # ==>
@@ -71,7 +71,8 @@ run('find /etc/sh -name *.conf -type f').pipe('head -n 5').xargs('echo {line} &&
 ```
 or with sh.py
 ```python
-run('test -d /etc/sh').otherwise().run('mkdir /etc/sh')
+if not run('test -d /etc/sh'):
+    run('mkdir /etc/sh')
 ```
 
 5. Show conf file content if exist, with bash
@@ -80,8 +81,10 @@ run('test -d /etc/sh').otherwise().run('mkdir /etc/sh')
 ```
 or with sh.py
 ```python
-run('test -f /etc/sh/sh.conf').then().run('cat /etc/sh/sh.conf').print()
+if run('test -f /etc/sh/sh.conf'):
+    run('cat /etc/sh/sh.conf', stdout=None)
 # or
-run('test -f /etc/sh/sh.conf').then().cat('/etc/sh/sh.conf').print()
+if run('test -f /etc/sh/sh.conf'):
+    cat(pathname='/etc/sh/sh.conf').print()
 ```
 
