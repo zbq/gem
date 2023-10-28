@@ -6,6 +6,7 @@ import textwrap
 import locale
 import math
 import statistics
+import threading
 
 __all__ = [
     'run',
@@ -22,8 +23,8 @@ __all__ = [
     'sort',
     'tee',
     'asnum',
-    'sum',
-    'mean',
+    'fsum',
+    'fmean',
     'Result',
     'STDOUT',
     'DEVNULL',
@@ -455,27 +456,26 @@ def asnum(*, int_base=10, flatten=True, stdin=None, pathname=None, encoding=None
             nums.append(tmp)
     return nums
 
-def sum(*, int_base=10, stdin=None, pathname=None, encoding=None, errors=None):
+def fsum(*, int_base=10, stdin=None, pathname=None, encoding=None, errors=None):
+    """
+    return the sum of the numbers in the text.
+    """
     nums = asnum(int_base=int_base, flatten=True, stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
     return math.fsum(nums)
 
-def mean(*, int_base=10, stdin=None, pathname=None, encoding=None, errors=None):
+def fmean(*, int_base=10, stdin=None, pathname=None, encoding=None, errors=None):
+    """
+    return the mean of the numbers in the text.
+    """
     nums = asnum(int_base=int_base, flatten=True, stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
-    return statistics.mean(nums)
+    return statistics.fmean(nums)
 
 class Result:
-    class NOP:
-        def __call__(self, *args, **kwargs):
-            return self
-        def __getattr__(self, name):
-            return self
-        def __setattr__(self, name, value):
-            return self
-        @property
-        def nop(self):
-            return True
-        def __bool__(self):
-            return False
+    __thlocal = threading.local()
+    __thlocal.cache = None
+    @classmethod
+    def cache(cls):
+        return cls.__thlocal.cache
 
     def __init__(self, stdout, /, *, returncode=0, stderr=None):
         self._returncode = returncode
@@ -494,35 +494,14 @@ class Result:
     def stderr(self):
         return self._stderr
 
-    @property
-    def nop(self):
-        return False
-
     def __bool__(self):
         return self._returncode == 0
 
-    def then(self):
-        """
-        simulate '&&' in bash.
-        """
-        if self.__bool__():
-            return self
-        else:
-            return Result.NOP()
+    def cache_self(self):
+        Result.__thlocal.cache = self
+        return self
 
-    def otherwise(self):
-        """
-        simulate '||' in bash.
-        """
-        if self.__bool__():
-            return Result.NOP()
-        else:
-            return self
-
-    def run(self, cmdline, /, *, stdin=None, stdout=PIPE, stderr=PIPE, encoding=None, errors=None):
-        return run(cmdline, stdin=stdin, stdout=stdout, stderr=stderr, encoding=encoding, errors=errors)
-
-    def pipe(self, cmdline, /, *, stdout=PIPE, stderr=PIPE, encoding=None, errors=None):
+    def run(self, cmdline, /, *, stdout=PIPE, stderr=PIPE, encoding=None, errors=None):
         """
         simulate '|' in bash.
         """
@@ -592,11 +571,11 @@ class Result:
     def asnum(self, /, *, int_base=10, flatten=True):
         return asnum(int_base=int_base, flatten=flatten, stdin=self._stdout)
 
-    def sum(self, /, *, int_base=10):
-        return sum(int_base=int_base, stdin=self._stdout)
+    def fsum(self, /, *, int_base=10):
+        return fsum(int_base=int_base, stdin=self._stdout)
 
-    def mean(self, /, *, int_base=10):
-        return mean(int_base=int_base, stdin=self._stdout)
+    def fmean(self, /, *, int_base=10):
+        return fmean(int_base=int_base, stdin=self._stdout)
 
     def print(self, *, prolog=None, body_end=None, epilog=None, file=sys.stdout):
         """
@@ -637,6 +616,8 @@ Result.uniq.__doc__ = uniq.__doc__
 Result.sort.__doc__ = sort.__doc__
 Result.tee.__doc__ = tee.__doc__
 Result.asnum.__doc__ = asnum.__doc__
+Result.fsum.__doc__ = fsum.__doc__
+Result.fmean.__doc__ = fmean.__doc__
 
 if __name__ == '__main__':
     def assert_eq(test, real, expect):
@@ -708,8 +689,8 @@ if __name__ == '__main__':
     assert_eq('asnum flatten', res.asnum(), [1,-2,3, 3e1, 3.1, 3.1e1, 0x12, -0o666, 0b11])
 
     res = Result('1\n2\n3')
-    assert_eq('sum', res.sum(), 6)
-    assert_eq('mean', res.mean(), 2.0)
+    assert_eq('sum', res.fsum(), 6.0)
+    assert_eq('mean', res.fmean(), 2.0)
 
     res = Result('1\n2\n3')
     assert_eq('xargs', res.xargs('echo {line}').stdout, "1\n2\n3\n")
@@ -733,15 +714,12 @@ if __name__ == '__main__':
 
     res = Result('')
     assert_eq('bool of success result is true', res.__bool__(), True)
-    assert_eq('success result is non nop', res.nop, False)
-    assert_eq('then of success result is non nop', res.then().nop, False)
-    assert_eq('otherwise of success result is nop', res.otherwise().nop, True)
-    assert_eq('bool of nop is always false', res.otherwise().__bool__(), False)
-    assert_eq('nop chain call', res.otherwise().dosth(1).then(2).dosthelse(3).nop, True)
 
     res = Result('', returncode=1)
     assert_eq('bool of fail result is false', res.__bool__(), False)
-    assert_eq('fail result is non nop', res.nop, False)
-    assert_eq('then of fail result is nop', res.then().nop, True)
-    assert_eq('otherwise of fail result is non nop', res.otherwise().nop, False)
 
+    res = Result('1\n2\n3')
+    assert_eq('cache self return self', res.cache_self(), res)
+    assert_eq('equal get from class and instance', res.cache(), Result.cache())
+    res.grep('2').wc('line')
+    assert_eq('get back from cache', res.cache(), res)
