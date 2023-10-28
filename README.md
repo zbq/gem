@@ -18,6 +18,8 @@ Time:2022-10-28 10:00:30, CPU:10%, Memory:40%
 You can get CPU usage around 10am:
 ```python
 cat('usage-record.txt').grep('Time:2022-10-28 10', around=3).extract(r'CPU:(\d+%)').indent().print(prolog='CPU usage around 10am:\n')
+# or
+grep('Time:2022-10-28 10', around=3, pathname='usage-record.txt').extract(r'CPU:(\d+%)').indent().print(prolog='CPU usage around 10am:\n')
 # ==>
 CPU usage around 10am:
   10%
@@ -40,3 +42,18 @@ cat('usage-record.txt').grep('Time:2022-10-28 10', around=3).extract(r'CPU:(\d+%
 # ==>
 15.71
 ```
+
+2. Summary all AnonHugePage usage
+```python
+def sum_anon(pid):
+  if pid is None: # iteration exhausted
+    return None
+  s = extract(r'AnonHugePages:\s+(\d\d+) kB', pathname=f'/proc/{pid}/smaps').sum()
+  return f'AnonHugePages of {pid}: {s/1024} MB'
+run('ps h -e -o pid').foreach('word', sum_anon).print()
+# ==>
+AnonHugePages of xxxx: nnn MB
+AnonHugePages of yyyy: nnn MB
+```
+
+3. 
