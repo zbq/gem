@@ -501,7 +501,7 @@ class Result:
         Result.__thlocal.cache = self
         return self
 
-    def run(self, cmdline, /, *, stdout=PIPE, stderr=PIPE, encoding=None, errors=None):
+    def pipe(self, cmdline, /, *, stdout=PIPE, stderr=PIPE, encoding=None, errors=None):
         """
         simulate '|' in bash.
         """
@@ -603,7 +603,7 @@ class Result:
         else:
             return repr(text)
 
-Result.run.__doc__ = run.__doc__
+Result.pipe.__doc__ = run.__doc__
 Result.select.__doc__ = select.__doc__
 Result.grep.__doc__ = grep.__doc__
 Result.cut.__doc__ = cut.__doc__
