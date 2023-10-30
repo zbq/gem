@@ -501,11 +501,11 @@ class Result:
         Result.__thlocal.cache = self
         return self
 
-    def pipe(self, cmdline, /, *, stdout=PIPE, stderr=PIPE, encoding=None, errors=None):
+    def pipe(self, cmdline, /, *, encoding=None, errors=None):
         """
         simulate '|' in bash.
         """
-        return run(cmdline, stdin=self._stdout, stdout=stdout, stderr=stderr, encoding=encoding, errors=errors)
+        return run(cmdline, stdin=self._stdout, stdout=PIPE, stderr=PIPE, encoding=encoding, errors=errors)
 
     def select(self, *nums):
         return select(*nums, stdin=self._stdout)
