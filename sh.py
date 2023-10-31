@@ -342,37 +342,28 @@ def iterate(type, /, *, stdin=None, pathname=None, encoding=None, errors=None):
     text, err = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors, newline='') # do not translate newline for iterate('char')
     assert not err, f'failed to read from {pathname}'
     if type == 'char':
-        for char in text:
-            yield char
+        return text
     elif type == 'word':
-        for word in text.split():
-            yield word
+        return text.split()
     else:
-        for line in text.splitlines():
-            yield line
+        return text.splitlines()
 
 def foreach(type, proc, /, *, stdin=None, pathname=None, encoding=None, errors=None):
     """
     call `proc(text)` for each char/word/line until exhausted or `proc` raise StopIteration.
-    if `proc` return str, it will be appended to output. None will be passed to `proc` to indicate exhausted.
+    if `proc` return str, it will be appended to output.
         type: iterate type, char/word/line
-        proc: signature: proc(text:str|None) -> str|None
+        proc: signature: proc(text:str) -> str
     """
     res = []
     for txt in iterate(type, stdin=stdin, pathname=pathname, encoding=encoding, errors=errors):
         try:
             new = proc(txt)
             if new:
+                assert isinstance(new, str)
                 res.append(new)
         except StopIteration:
             break
-    else: # no break
-        try:
-            new = proc(None) # tell proc no more text
-            if new:
-                res.append(new)
-        except StopIteration:
-            pass
     return Result(''.join(res))
 
 def compact(*, strip=True, remove_empty_line=True, join_line=' ', stdin=None, pathname=None, encoding=None, errors=None):
@@ -394,15 +385,7 @@ def wc(type, /, *, asnum=True, stdin=None, pathname=None, encoding=None, errors=
 
         asnum: if true, convert to number
     """
-    assert type in ('char', 'word', 'line'), 'valid wc type: char, word, line'
-    text, err = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors, newline='') # do not translate newline for wc('char')
-    assert not err, f'failed to read from {pathname}'
-    if type == 'char':
-        length = len(text)
-    elif type == 'word':
-        length = len(text.split())
-    else:
-        length = len(text.splitlines())
+    length = len(iterate(type, stdin=stdin, pathname=pathname, encoding=encoding, errors=errors))
     return length if asnum else Result(str(length))
 
 def uniq(*, stdin=None, pathname=None, encoding=None, errors=None):
@@ -661,12 +644,10 @@ if __name__ == '__main__':
 
     res = Result('1 \r\n\n 2\n 3')
     def foreach_appendx(txt):
-        if txt is None:
-            return 'done'
         return 'x'+txt
-    assert_eq('foreach char', res.foreach('char', foreach_appendx).stdout, 'x1x x\rx\nx\nx x2x\nx x3done')
-    assert_eq('foreach word', res.foreach('word', foreach_appendx).stdout, 'x1x2x3done')
-    assert_eq('foreach line', res.foreach('line', foreach_appendx).stdout, 'x1 xx 2x 3done')
+    assert_eq('foreach char', res.foreach('char', foreach_appendx).stdout, 'x1x x\rx\nx\nx x2x\nx x3')
+    assert_eq('foreach word', res.foreach('word', foreach_appendx).stdout, 'x1x2x3')
+    assert_eq('foreach line', res.foreach('line', foreach_appendx).stdout, 'x1 xx 2x 3')
     def foreach_break(txt):
         if txt.find('2') != -1:
             raise StopIteration
