@@ -71,7 +71,7 @@ run('find /etc/sh -name *.conf -type f').pipe('head -n 5').xargs('echo {line} &&
 ```
 or with sh.py
 ```python
-if not run('test -d /etc/sh'):
+if not os.path.isdir('/etc/sh'):
     run('mkdir /etc/sh')
 ```
 
@@ -81,10 +81,10 @@ if not run('test -d /etc/sh'):
 ```
 or with sh.py
 ```python
-if run('test -f /etc/sh/sh.conf'):
+if os.path.isfile('/etc/sh/sh.conf'):
     run('cat /etc/sh/sh.conf', stdout=None)
 # or
-if run('test -f /etc/sh/sh.conf'):
+if os.path.isfile('/etc/sh/sh.conf'):
     cat(pathname='/etc/sh/sh.conf').print()
 ```
 
