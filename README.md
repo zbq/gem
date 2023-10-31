@@ -46,8 +46,6 @@ cat('usage-record.txt').grep('Time:2022-10-28 10', around=3).extract(r'CPU:(\d+%
 2. Show a summary of AnonHugePage usage
 ```python
 def sum_anon(pid):
-  if pid is None: # iteration exhausted
-    return None
   s = extract(r'AnonHugePages:\s+(\d\d+) kB', pathname=f'/proc/{pid}/smaps').fsum()
   return f'AnonHugePages of {pid}: {s/1024} MB'
 run('ps h -e -o pid').foreach('word', sum_anon).print()
