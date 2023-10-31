@@ -6,15 +6,17 @@ import textwrap
 import locale
 import math
 import statistics
-import threading
+from glob import glob as _glob
 
 __all__ = [
+    'glob',
     'run',
     'cat',
     'select',
     'grep',
     'cut',
     'sed',
+    'iterate',
     'foreach',
     'compact',
     'extract',
@@ -30,6 +32,9 @@ __all__ = [
     'DEVNULL',
     'PIPE',
 ]
+
+def glob(pathname, root_dir=None):
+    return _glob(pathname, root_dir=root_dir, recursive=True)
 
 def run(cmdline, /, *, stdin=None, stdout=PIPE, stderr=PIPE, encoding=None, errors=None):
     """
@@ -329,35 +334,45 @@ def sed(pattern, repl, /, *, count=0, ignorecase=False, stdin=None, pathname=Non
         res.append(line)
     return Result('\n'.join(res))
 
+def iterate(type, /, *, stdin=None, pathname=None, encoding=None, errors=None):
+    """
+    iterate as 'char/word/line'.
+    """
+    assert type in ('char', 'word', 'line'), 'valid iterate type: char, word, line'
+    text, err = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors, newline='') # do not translate newline for iterate('char')
+    assert not err, f'failed to read from {pathname}'
+    if type == 'char':
+        for char in text:
+            yield char
+    elif type == 'word':
+        for word in text.split():
+            yield word
+    else:
+        for line in text.splitlines():
+            yield line
+
 def foreach(type, proc, /, *, stdin=None, pathname=None, encoding=None, errors=None):
     """
-    call `proc(text)` for each char/word/line until exhausted or `proc` return None.
-    if `proc` return non-None, it will be appended to output. None will be passed to `proc` to indicate exhausted.
+    call `proc(text)` for each char/word/line until exhausted or `proc` raise StopIteration.
+    if `proc` return str, it will be appended to output. None will be passed to `proc` to indicate exhausted.
         type: iterate type, char/word/line
         proc: signature: proc(text:str|None) -> str|None
     """
-    assert type in ('char', 'word', 'line'), 'valid iterate type: char, word, line'
-    text, err = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors, newline='') # do not translate newline for foreach('char')
-    if err:
-        return text
-    def iterate(txts, res):
-        for txt in txts:
+    res = []
+    for txt in iterate(type, stdin=stdin, pathname=pathname, encoding=encoding, errors=errors):
+        try:
             new = proc(txt)
             if new:
                 res.append(new)
-            elif new is None:
-                return True
-        return False
-    res = []
-    done = False
-    if type == 'char':
-        done = iterate(text, res)
-    elif type == 'word':
-        done = iterate(text.split(), res)
-    else:
-        done = iterate(text.splitlines(), res)
-    if not done:
-        iterate((None,), res) # tell proc no more text
+        except StopIteration:
+            break
+    else: # no break
+        try:
+            new = proc(None) # tell proc no more text
+            if new:
+                res.append(new)
+        except StopIteration:
+            pass
     return Result(''.join(res))
 
 def compact(*, strip=True, remove_empty_line=True, join_line=' ', stdin=None, pathname=None, encoding=None, errors=None):
@@ -471,12 +486,6 @@ def fmean(*, int_base=10, stdin=None, pathname=None, encoding=None, errors=None)
     return statistics.fmean(nums)
 
 class Result:
-    __thlocal = threading.local()
-    __thlocal.cache = None
-    @classmethod
-    def cache(cls):
-        return cls.__thlocal.cache
-
     def __init__(self, stdout, /, *, returncode=0, stderr=None):
         self._returncode = returncode
         self._stdout = stdout if stdout else ''
@@ -496,10 +505,6 @@ class Result:
 
     def __bool__(self):
         return self._returncode == 0
-
-    def cache_self(self):
-        Result.__thlocal.cache = self
-        return self
 
     def pipe(self, cmdline, /, *, encoding=None, errors=None):
         """
@@ -521,6 +526,9 @@ class Result:
 
     def sed(self, pattern, repl, /, *, count=0, ignorecase=False):
         return sed(pattern, repl, count=count, ignorecase=ignorecase, stdin=self._stdout)
+
+    def iterate(self, type, /):
+        return iterate(type, stdin=self._stdout)
 
     def foreach(self, type, proc, /):
         return foreach(type, proc, stdin=self._stdout)
@@ -608,6 +616,7 @@ Result.select.__doc__ = select.__doc__
 Result.grep.__doc__ = grep.__doc__
 Result.cut.__doc__ = cut.__doc__
 Result.sed.__doc__ = sed.__doc__
+Result.iterate.__doc__ = iterate.__doc__
 Result.foreach.__doc__ = foreach.__doc__
 Result.compact.__doc__ = compact.__doc__
 Result.extract.__doc__ = extract.__doc__
@@ -660,12 +669,13 @@ if __name__ == '__main__':
     assert_eq('foreach line', res.foreach('line', foreach_appendx).stdout, 'x1 xx 2x 3done')
     def foreach_break(txt):
         if txt.find('2') != -1:
-            return None
+            raise StopIteration
         else:
             return txt
     assert_eq('foreach char break', res.foreach('char', foreach_break).stdout, '1 \r\n\n ')
     assert_eq('foreach word break', res.foreach('word', foreach_break).stdout, '1')
     assert_eq('foreach line break', res.foreach('line', foreach_break).stdout, '1 ')
+    assert_eq('iterate word', list(res.iterate('word')), ['1', '2', '3'])
 
     res = Result('1 \n\n 2\n 3')
     assert_eq('compact with strip', res.compact().stdout, '1 2 3')
@@ -718,8 +728,3 @@ if __name__ == '__main__':
     res = Result('', returncode=1)
     assert_eq('bool of fail result is false', res.__bool__(), False)
 
-    res = Result('1\n2\n3')
-    assert_eq('cache self return self', res.cache_self(), res)
-    assert_eq('equal get from class and instance', res.cache(), Result.cache())
-    res.grep('2').wc('line')
-    assert_eq('get back from cache', res.cache(), res)
