@@ -33,8 +33,15 @@ __all__ = [
     'PIPE',
 ]
 
+def _assert_exclusive(**kwargs):
+    narg = 0
+    for arg in kwargs:
+        if kwargs[arg] is not None:
+            narg += 1
+    assert narg == 1, f'{"/".join(kwargs.keys())}, accept one argument.'
+
 def glob(pathname, root_dir=None):
-    return _glob(pathname, root_dir=root_dir, recursive=True)
+    return Result('\n'.join(_glob(pathname, root_dir=root_dir, recursive=True)))
 
 def run(cmdline, /, *, stdin=None, stdout=PIPE, stderr=PIPE, encoding=None, errors=None):
     """
@@ -89,7 +96,7 @@ def _get_input(*, stdin=None, pathname=None, encoding=None, errors=None, newline
     if pathname is not None:
         assert isinstance(pathname, str)
         narg += 1
-    assert narg == 1, 'stdin or pathname, only one arg is accepted'
+    assert narg == 1, 'stdin/pathname, accept one argument.'
     if pathname:
         res = cat(pathname, encoding=encoding, errors=errors, newline=newline)
         if res:
@@ -225,7 +232,7 @@ def grep(pattern, /, *, ignorecase=False, invert=False, before=None, around=None
         if n is not None:
             assert isinstance(n, int)
             narg += 1
-    assert narg <= 1, 'before/around/after, not more than one arg'
+    assert narg <= 1, 'before/around/after, not more than one argument.'
     text, err = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
     if err:
         return text
@@ -243,7 +250,7 @@ def grep(pattern, /, *, ignorecase=False, invert=False, before=None, around=None
     else:
         return Result('', returncode=1)
     
-def extract(pattern, /, *, ignorecase=False, join_group=' ', format_group=None, stdin=None, pathname=None, encoding=None, errors=None):
+def extract(pattern, /, *, ignorecase=False, join_group=None, format_group=None, stdin=None, pathname=None, encoding=None, errors=None):
     """
     find matched string, matched string groups are formatted by `format_group` (if provided) or joined by `join_group`.
         pattern: regular expression
@@ -255,6 +262,7 @@ def extract(pattern, /, *, ignorecase=False, join_group=' ', format_group=None, 
         Name=Tony
         Age=12
     """
+    _assert_exclusive(join_group=join_group, format_group=format_group)
     text, err = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
     if err:
         return text
@@ -275,7 +283,7 @@ def extract(pattern, /, *, ignorecase=False, join_group=' ', format_group=None, 
     else:
         return Result('', returncode=1)
 
-def cut(*, delim=r'\s+', maxsplit=0, fields=(slice(0, None), ), join_field=' ', format_field=None, stdin=None, pathname=None, encoding=None, errors=None):
+def cut(*fields, delim=r'\s+', maxsplit=0, join_field=None, format_field=None, stdin=None, pathname=None, encoding=None, errors=None):
     """
     simulate `cut` command.
         delim: delimiter(support regular expression)
@@ -284,11 +292,12 @@ def cut(*, delim=r'\s+', maxsplit=0, fields=(slice(0, None), ), join_field=' ', 
         join_field/format_field: selected fields are formatted by `format_field` (if provided) or joined by `join_field`
 
     example:
-        cut(stdin="  Name:   Tony\n  Age:    12")
+        cut(0, 1, stdin="  Name:   Tony\n  Age:    12", join_field=" ")
         ===>
         Name: Tony
         Age: 12
     """
+    _assert_exclusive(join_field=join_field, format_field=format_field)
     text, err = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
     if err:
         return text
@@ -379,14 +388,14 @@ def compact(*, strip=True, remove_empty_line=True, join_line=' ', stdin=None, pa
         res.append(line)
     return Result(join_line.join(res))
 
-def wc(type, /, *, asnum=True, stdin=None, pathname=None, encoding=None, errors=None):
+def wc(type, /, *, return_num=True, stdin=None, pathname=None, encoding=None, errors=None):
     """
     return count of 'char/word/line'.
 
-        asnum: if true, convert to number
+        return_num: if true, convert to number
     """
     length = len(iterate(type, stdin=stdin, pathname=pathname, encoding=encoding, errors=errors))
-    return length if asnum else Result(str(length))
+    return length if return_num else Result(str(length))
 
 def uniq(*, stdin=None, pathname=None, encoding=None, errors=None):
     text, err = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
@@ -501,11 +510,11 @@ class Result:
     def grep(self, pattern, /, *, ignorecase=False, invert=False, before=None, around=None, after=None):
         return grep(pattern, ignorecase=ignorecase, invert=invert, before=before, around=around, after=after, stdin=self._stdout)
 
-    def extract(self, pattern, /, *, ignorecase=False, join_group=' ', format_group=None):
+    def extract(self, pattern, /, *, ignorecase=False, join_group=None, format_group=None):
         return extract(pattern, ignorecase=ignorecase, join_group=join_group, format_group=format_group, stdin=self._stdout)
 
-    def cut(self, *, delim=r'\s+', maxsplit=0, fields=(slice(0, None), ), join_field=' ', format_field=None):
-        return cut(delim=delim, maxsplit=maxsplit, fields=fields, join_field=join_field, format_field=format_field, stdin=self._stdout)
+    def cut(self, *fields, delim=r'\s+', maxsplit=0, join_field=None, format_field=None):
+        return cut(*fields, delim=delim, maxsplit=maxsplit, join_field=join_field, format_field=format_field, stdin=self._stdout)
 
     def sed(self, pattern, repl, /, *, count=0, ignorecase=False):
         return sed(pattern, repl, count=count, ignorecase=ignorecase, stdin=self._stdout)
@@ -547,8 +556,8 @@ class Result:
     def compact(self, *, strip=True, remove_empty_line=True, join_line=' '):
         return compact(strip=strip, remove_empty_line=remove_empty_line, join_line=join_line, stdin=self._stdout)
 
-    def wc(self, type, /, *, asnum=True):
-        return wc(type, asnum=asnum, stdin=self._stdout)
+    def wc(self, type, /, *, return_num=True):
+        return wc(type, return_num=return_num, stdin=self._stdout)
 
     def uniq(self):
         return uniq(stdin=self._stdout)
@@ -633,9 +642,9 @@ if __name__ == '__main__':
     assert_eq('grep nothing around pattern', res.grep('tx', around=1).__bool__(), False)
 
     res = Result("1, 2, 3, 4, 5, 6\nt1,    t2,t3, t4, t5, t6, t7, t8")
-    assert_eq('cut', res.cut(delim=r',\s*', fields=(1, range(2, 4), slice(-2, None))).stdout,
+    assert_eq('cut', res.cut(1, range(2, 4), slice(-2, None), delim=r',\s*', join_field=' ').stdout,
               '2 3 4 5 6\nt2 t3 t4 t7 t8')
-    assert_eq('cut', res.cut(delim=r',\s*', fields=(1, range(2, 4), slice(-2, None)), format_field='{0}x{4}').stdout,
+    assert_eq('cut', res.cut(1, range(2, 4), slice(-2, None), delim=r',\s*', format_field='{0}x{4}').stdout,
               '2x6\nt2xt8')
 
     res = Result("Name:   Tony\nAge: \t 12")
@@ -664,8 +673,8 @@ if __name__ == '__main__':
     assert_eq('compact without remove empty line', res.compact(remove_empty_line=False, join_line=',').stdout, '1,,2,3')
 
     res = Result('1 \n 2\n 3')
-    assert_eq('wc char', res.wc('char', asnum=False).stdout, '8')
-    assert_eq('wc word', res.wc('word', asnum=False).stdout, '3')
+    assert_eq('wc char', res.wc('char', return_num=False).stdout, '8')
+    assert_eq('wc word', res.wc('word', return_num=False).stdout, '3')
     assert_eq('wc line', res.wc('line'), 3)
 
     res = Result('1\n1\n2\n 2')
