@@ -7,8 +7,10 @@ import locale
 import math
 import statistics
 from glob import glob as _glob
+from datetime import datetime
 
 __all__ = [
+    'now',
     'glob',
     'run',
     'cat',
@@ -33,12 +35,8 @@ __all__ = [
     'PIPE',
 ]
 
-def _assert_exclusive(**kwargs):
-    narg = 0
-    for arg in kwargs:
-        if kwargs[arg] is not None:
-            narg += 1
-    assert narg == 1, f'{"/".join(kwargs.keys())}, accept one argument.'
+def now():
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 def glob(pathname, root_dir=None):
     return Result('\n'.join(_glob(pathname, root_dir=root_dir, recursive=True)))
@@ -140,7 +138,7 @@ def select(*nums, stdin=None, pathname=None, encoding=None, errors=None):
     """
     select lines by index, range, slice.
     example:
-        select(1, -1, range(2,4), slice(-3, -1), stdin="0\n1\n2\n3\n4\n5").compact(join_line=',')
+        select(1, -1, range(2,4), slice(-3, -1), stdin="0\n1\n2\n3\n4\n5").compact(join_with=',')
         ===>
         1,5,2,3,3,4
     """
@@ -250,19 +248,18 @@ def grep(pattern, /, *, ignorecase=False, invert=False, before=None, around=None
     else:
         return Result('', returncode=1)
     
-def extract(pattern, /, *, ignorecase=False, join_group=None, format_group=None, stdin=None, pathname=None, encoding=None, errors=None):
+def extract(pattern, /, *, ignorecase=False, join_with=' ', format_with=None, stdin=None, pathname=None, encoding=None, errors=None):
     """
-    find matched string, matched string groups are formatted by `format_group` (if provided) or joined by `join_group`.
+    find matched string, matched string groups are formatted by `format_with` (if provided) or joined by `join_with`.
         pattern: regular expression
         ignorecase: ignore case when search pattern
 
     example:
-        extract(r'(\w+):\s+(\w+)', stdin='  Name:   Tony\n  Age:    12', format_group='{0}={1}')
+        extract(r'(\w+):\s+(\w+)', stdin='  Name:   Tony\n  Age:    12', format_with='{0}={1}')
         ===>
         Name=Tony
         Age=12
     """
-    _assert_exclusive(join_group=join_group, format_group=format_group)
     text, err = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
     if err:
         return text
@@ -274,30 +271,29 @@ def extract(pattern, /, *, ignorecase=False, join_group=None, format_group=None,
         m = re.search(pattern, line, flags)
         if m:
             assert m.groups()
-            if format_group is not None:
-                res.append(format_group.format(*m.groups()))
+            if format_with is not None:
+                res.append(format_with.format(*m.groups()))
             else:
-                res.append(join_group.join(m.groups()))
+                res.append(join_with.join(m.groups()))
     if res:
         return Result('\n'.join(res))
     else:
         return Result('', returncode=1)
 
-def cut(*fields, delim=r'\s+', maxsplit=0, join_field=None, format_field=None, stdin=None, pathname=None, encoding=None, errors=None):
+def cut(*fields, delim=r'\s+', maxsplit=0, join_with=' ', format_with=None, stdin=None, pathname=None, encoding=None, errors=None):
     """
     simulate `cut` command.
         delim: delimiter(support regular expression)
         maxsplit: if maxsplit is nonzero, at most maxsplit splits occur for each line.
         fields: select fields before join/format
-        join_field/format_field: selected fields are formatted by `format_field` (if provided) or joined by `join_field`
+        join_with/format_with: selected fields are formatted by `format_with` (if provided) or joined by `join_with`
 
     example:
-        cut(0, 1, stdin="  Name:   Tony\n  Age:    12", join_field=" ")
+        cut(0, 1, stdin="  Name:   Tony\n  Age:    12")
         ===>
         Name: Tony
         Age: 12
     """
-    _assert_exclusive(join_field=join_field, format_field=format_field)
     text, err = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
     if err:
         return text
@@ -305,19 +301,19 @@ def cut(*fields, delim=r'\s+', maxsplit=0, join_field=None, format_field=None, s
     for line in text.splitlines():
         #parts = [p for p in re.split(delim, line) if (p and not p.isspace())] # strip blank field
         parts = _select(re.split(delim, line, maxsplit), fields)
-        if format_field is not None:
-            res.append(format_field.format(*parts))
+        if format_with is not None:
+            res.append(format_with.format(*parts))
         else:
-            res.append(join_field.join(parts))
+            res.append(join_with.join(parts))
     if res:
         return Result('\n'.join(res))
     else:
         return Result('', returncode=1)
 
-def sed(pattern, repl, /, *, count=0, ignorecase=False, stdin=None, pathname=None, encoding=None, errors=None):
+def sed(pattern, repl, /, *, maxrepl=0, ignorecase=False, stdin=None, pathname=None, encoding=None, errors=None):
     """
     substitute, simulate and enhancement of `sed "s/pattern/repl/xx" xxx`.
-        count: maximum number of pattern occurrences to be replaced, if zero, all occurrences will be replaced.
+        maxrepl: maximum number of pattern occurrences to be replaced, if zero, all occurrences will be replaced.
         ignorecase: ignore case when search pattern
 
     example:
@@ -339,7 +335,7 @@ def sed(pattern, repl, /, *, count=0, ignorecase=False, stdin=None, pathname=Non
         flags |= re.IGNORECASE
     res = []
     for line in text.splitlines():
-        line = re.sub(pattern, repl, line, count=count, flags=flags)
+        line = re.sub(pattern, repl, line, count=maxrepl, flags=flags)
         res.append(line)
     return Result('\n'.join(res))
 
@@ -375,7 +371,7 @@ def foreach(type, proc, /, *, stdin=None, pathname=None, encoding=None, errors=N
             break
     return Result(''.join(res))
 
-def compact(*, strip=True, remove_empty_line=True, join_line=' ', stdin=None, pathname=None, encoding=None, errors=None):
+def compact(*, strip=True, remove_empty_line=True, join_with=' ', stdin=None, pathname=None, encoding=None, errors=None):
     text, err = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
     if err:
         return text
@@ -386,7 +382,7 @@ def compact(*, strip=True, remove_empty_line=True, join_line=' ', stdin=None, pa
         if remove_empty_line and not line:
             continue
         res.append(line)
-    return Result(join_line.join(res))
+    return Result(join_with.join(res))
 
 def wc(type, /, *, return_num=True, stdin=None, pathname=None, encoding=None, errors=None):
     """
@@ -510,14 +506,14 @@ class Result:
     def grep(self, pattern, /, *, ignorecase=False, invert=False, before=None, around=None, after=None):
         return grep(pattern, ignorecase=ignorecase, invert=invert, before=before, around=around, after=after, stdin=self._stdout)
 
-    def extract(self, pattern, /, *, ignorecase=False, join_group=None, format_group=None):
-        return extract(pattern, ignorecase=ignorecase, join_group=join_group, format_group=format_group, stdin=self._stdout)
+    def extract(self, pattern, /, *, ignorecase=False, join_with=' ', format_with=None):
+        return extract(pattern, ignorecase=ignorecase, join_with=join_with, format_with=format_with, stdin=self._stdout)
 
-    def cut(self, *fields, delim=r'\s+', maxsplit=0, join_field=None, format_field=None):
-        return cut(*fields, delim=delim, maxsplit=maxsplit, join_field=join_field, format_field=format_field, stdin=self._stdout)
+    def cut(self, *fields, delim=r'\s+', maxsplit=0, join_with=' ', format_with=None):
+        return cut(*fields, delim=delim, maxsplit=maxsplit, join_with=join_with, format_with=format_with, stdin=self._stdout)
 
-    def sed(self, pattern, repl, /, *, count=0, ignorecase=False):
-        return sed(pattern, repl, count=count, ignorecase=ignorecase, stdin=self._stdout)
+    def sed(self, pattern, repl, /, *, maxrepl=0, ignorecase=False):
+        return sed(pattern, repl, maxrepl=maxrepl, ignorecase=ignorecase, stdin=self._stdout)
 
     def iterate(self, type, /):
         return iterate(type, stdin=self._stdout)
@@ -553,8 +549,8 @@ class Result:
     def dedent(self):
         return Result(textwrap.dedent(self._stdout))
 
-    def compact(self, *, strip=True, remove_empty_line=True, join_line=' '):
-        return compact(strip=strip, remove_empty_line=remove_empty_line, join_line=join_line, stdin=self._stdout)
+    def compact(self, *, strip=True, remove_empty_line=True, join_with=' '):
+        return compact(strip=strip, remove_empty_line=remove_empty_line, join_with=join_with, stdin=self._stdout)
 
     def wc(self, type, /, *, return_num=True):
         return wc(type, return_num=return_num, stdin=self._stdout)
@@ -629,7 +625,7 @@ if __name__ == '__main__':
     res = Result('  Name:   Tony\n  Age:    12')
     assert_eq('grep', res.grep(r'Name:').stdout, '  Name:   Tony')
     assert_eq('invert grep', res.grep(r'Name:', invert=True).stdout, '  Age:    12')
-    assert_eq('extract', res.extract(r'(\w+):\s+(\w+)', format_group='{0}={1}').stdout, 'Name=Tony\nAge=12')
+    assert_eq('extract', res.extract(r'(\w+):\s+(\w+)', format_with='{0}={1}').stdout, 'Name=Tony\nAge=12')
     res = Result('a\n  \n\nb\n')
     assert_eq('invert grep preserve whitespace', res.grep(r'a', invert=True).stdout, '  \n\nb')
     assert_eq('grep nothing', res.grep(r'Name').__bool__(), False)
@@ -642,9 +638,9 @@ if __name__ == '__main__':
     assert_eq('grep nothing around pattern', res.grep('tx', around=1).__bool__(), False)
 
     res = Result("1, 2, 3, 4, 5, 6\nt1,    t2,t3, t4, t5, t6, t7, t8")
-    assert_eq('cut', res.cut(1, range(2, 4), slice(-2, None), delim=r',\s*', join_field=' ').stdout,
+    assert_eq('cut', res.cut(1, range(2, 4), slice(-2, None), delim=r',\s*').stdout,
               '2 3 4 5 6\nt2 t3 t4 t7 t8')
-    assert_eq('cut', res.cut(1, range(2, 4), slice(-2, None), delim=r',\s*', format_field='{0}x{4}').stdout,
+    assert_eq('cut', res.cut(1, range(2, 4), slice(-2, None), delim=r',\s*', format_with='{0}x{4}').stdout,
               '2x6\nt2xt8')
 
     res = Result("Name:   Tony\nAge: \t 12")
@@ -669,8 +665,8 @@ if __name__ == '__main__':
 
     res = Result('1 \n\n 2\n 3')
     assert_eq('compact with strip', res.compact().stdout, '1 2 3')
-    assert_eq('compact without strip', res.compact(strip=False, join_line=',').stdout, '1 , 2, 3')
-    assert_eq('compact without remove empty line', res.compact(remove_empty_line=False, join_line=',').stdout, '1,,2,3')
+    assert_eq('compact without strip', res.compact(strip=False, join_with=',').stdout, '1 , 2, 3')
+    assert_eq('compact without remove empty line', res.compact(remove_empty_line=False, join_with=',').stdout, '1,,2,3')
 
     res = Result('1 \n 2\n 3')
     assert_eq('wc char', res.wc('char', return_num=False).stdout, '8')
