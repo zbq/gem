@@ -393,25 +393,29 @@ def wc(type, /, *, return_num=True, stdin=None, pathname=None, encoding=None, er
     length = len(iterate(type, stdin=stdin, pathname=pathname, encoding=encoding, errors=errors))
     return length if return_num else Result(str(length))
 
-def uniq(*, stdin=None, pathname=None, encoding=None, errors=None):
+def uniq(*, ignorecase=False, stdin=None, pathname=None, encoding=None, errors=None):
     text, err = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
     if err:
         return text
     lines = text.splitlines()
     if not lines:
         return Result('')
+    if ignorecase:
+        cmplines = [line.casefold() for line in lines]
+    else:
+        cmplines = lines
     res = [lines[0]]
     for i in range(1, len(lines)):
-        if lines[i] != lines[i-1]:
+        if cmplines[i] != cmplines[i-1]:
             res.append(lines[i])
     return Result('\n'.join(res))
 
-def sort(*, ascending=True, stdin=None, pathname=None, encoding=None, errors=None):
+def sort(*, ascending=True, ignorecase=False, stdin=None, pathname=None, encoding=None, errors=None):
     text, err = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
     if err:
         return text
     lines = text.splitlines() # sorted(["0\n", "0"]) => ["0", "0\n"], so do not keep newline
-    return Result('\n'.join(sorted(lines, reverse=not ascending)))
+    return Result('\n'.join(sorted(lines, key=str.casefold if ignorecase else None, reverse=not ascending)))
 
 def tee(pathname, /, *, stdin, append=False, encoding=None, errors=None, newline=None):
     mode = 'a' if append else 'w'
@@ -555,11 +559,11 @@ class Result:
     def wc(self, type, /, *, return_num=True):
         return wc(type, return_num=return_num, stdin=self._stdout)
 
-    def uniq(self):
-        return uniq(stdin=self._stdout)
+    def uniq(self, *, ignorecase=False):
+        return uniq(ignorecase=ignorecase, stdin=self._stdout)
 
-    def sort(self, *, ascending=True):
-        return sort(ascending=ascending, stdin=self._stdout)
+    def sort(self, *, ascending=True, ignorecase=False):
+        return sort(ascending=ascending, ignorecase=ignorecase, stdin=self._stdout)
 
     def tee(self, pathname, /, *, append=False, encoding=None, errors=None, newline=None):
         return tee(pathname, append=append, stdin=self._stdout, encoding=encoding, errors=errors, newline=newline)
@@ -675,10 +679,17 @@ if __name__ == '__main__':
 
     res = Result('1\n1\n2\n 2')
     assert_eq('uniq', res.uniq().stdout, '1\n2\n 2')
+    res = Result('a\nA\nB\nb\nb')
+    assert_eq('case sensitive uniq', res.uniq().stdout, 'a\nA\nB\nb')
+    assert_eq('case insensitive uniq', res.uniq(ignorecase=True).stdout, 'a\nB')
 
     res = Result('1\n3\n2')
     assert_eq('sort ascending', res.sort().stdout, '1\n2\n3')
     assert_eq('sort descending', res.sort(ascending=False).stdout, '3\n2\n1')
+    res = Result('a\nB\nA\nb')
+    assert_eq('case sensitive sort ascending', res.sort().stdout, 'A\nB\na\nb')
+    assert_eq('case insensitive sort ascending', res.sort(ignorecase=True).stdout, 'a\nA\nB\nb')
+    assert_eq('case insensitive sort decending', res.sort(ascending=False, ignorecase=True).stdout, 'B\nb\na\nA')
 
     res = Result('hello1,-2,- 3x\n   \nhello x3e1 3.1 3.1e1\n0x12 -0o666 +0b11')
     assert_eq('asnum', res.asnum(flatten=False), [[1,-2,3], [3e1, 3.1, 3.1e1], [0x12, -0o666, 0b11]])
