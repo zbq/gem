@@ -86,3 +86,38 @@ if os.path.isfile('/etc/sh/sh.conf'):
     cat(pathname='/etc/sh/sh.conf').print()
 ```
 
+6. Suppose you have a `ps -e -o user,pid,rss,comm` record ps-record.txt
+```
+USER     PID    RSS  COMMAND
+root       1   6820  systemd
+chrony   634   1668  chronyd
+root     645   2448  login
+postfix 1058   3992  pickup
+root    1112   2088  bash
+```
+You can get a user list with
+```python
+select(slice(1,None), pathname='ps-record.txt').cut(0).sort().uniq()
+# ==>
+chrony
+postfix
+root
+```
+get a summary of RSS with
+```python
+rss = select(slice(1,None), pathname='ps-record.txt').cut(0,2)
+for user in rss.cut(0).sort().uniq().iterate('line'):
+    print(user, rss.grep(rf'^{user} ').fsum())
+# ==>
+chrony 1668.0
+postfix 3992.0
+root 11356.0
+```
+or
+```python
+rss = select(slice(1,None), pathname='ps-record.txt').cut(0,2)
+def sum_rss(user):
+    print(user, rss.grep(rf'^{user} ').fsum())
+rss.cut(0).sort().uniq().foreach('line', sum_rss)
+```
+
