@@ -121,3 +121,8 @@ def sum_rss(user):
 rss.cut(0).sort().uniq().foreach('line', sum_rss)
 ```
 
+7. Get kernel IRQ exception call trace
+```python
+run('dmesg').grep_between('irq \d+: nobody cared', 'Disabling IRQ #\d+').print()
+```
+

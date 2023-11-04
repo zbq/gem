@@ -16,6 +16,7 @@ __all__ = [
     'cat',
     'select',
     'grep',
+    'grep_between',
     'cut',
     'sed',
     'iterate',
@@ -106,7 +107,7 @@ def _get_input(*, stdin=None, pathname=None, encoding=None, errors=None, newline
 
 def _find(lines, pattern, /, *, ignorecase=False, invert=False):
     """
-    like `grep` but return matched indexes.
+    similar to `grep` but return matched indexes.
     """
     flags = 0
     if ignorecase:
@@ -247,7 +248,59 @@ def grep(pattern, /, *, ignorecase=False, invert=False, before=None, around=None
         return Result('\n'.join(_select(lines, indexes)))
     else:
         return Result('', returncode=1)
-    
+
+def _find_first(lines, pattern, from_index, /, *, ignorecase=False):
+    """
+    similar to `_find` but return the first index.
+    """
+    flags = 0
+    if ignorecase:
+        flags |= re.IGNORECASE
+    for i in range(from_index, len(lines)):
+        m = re.search(pattern, lines[i], flags)
+        if m:
+            return i
+    return None
+
+def grep_between(pattern_beg, pattern_end, /, *, ignorecase=False, before=None, around=None, after=None, stdin=None, pathname=None, encoding=None, errors=None):
+    """
+    grep text between `pattern_beg` and `pattern_end`.
+    """
+    narg = 0
+    for n in (before, around, after):
+        if n is not None:
+            assert isinstance(n, int)
+            narg += 1
+    assert narg <= 1, 'before/around/after, not more than one argument.'
+    text, err = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
+    if err:
+        return text
+    lines = text.splitlines()
+    indexes = set()
+    idx_beg = 0
+    while True:
+        idx_beg = _find_first(lines, pattern_beg, idx_beg, ignorecase=ignorecase)
+        if idx_beg is None:
+            break
+        idx_end = _find_first(lines, pattern_end, idx_beg+1, ignorecase=ignorecase)
+        if idx_end is None:
+            break
+        indexes.update(range(idx_beg, idx_end+1))
+        idx_beg = idx_end+1
+    if before is not None:
+        indexes = _before(indexes, before, len(lines))
+    elif around is not None:
+        indexes = _around(indexes, around, len(lines))
+    elif after is not None:
+        indexes = _after(indexes, after, len(lines))
+    else:
+        indexes = sorted(indexes)
+
+    if indexes:
+        return Result('\n'.join(_select(lines, indexes)))
+    else:
+        return Result('', returncode=1)
+
 def extract(pattern, /, *, ignorecase=False, join_with=' ', format_with=None, stdin=None, pathname=None, encoding=None, errors=None):
     """
     find matched string, matched string groups are formatted by `format_with` (if provided) or joined by `join_with`.
@@ -510,6 +563,10 @@ class Result:
     def grep(self, pattern, /, *, ignorecase=False, invert=False, before=None, around=None, after=None):
         return grep(pattern, ignorecase=ignorecase, invert=invert, before=before, around=around, after=after, stdin=self._stdout)
 
+    def grep_between(self, pattern_beg, pattern_end, /, *, ignorecase=False, before=None, around=None, after=None,
+                     stdin=None, pathname=None, encoding=None, errors=None):
+        return grep_between(pattern_beg, pattern_end, ignorecase=ignorecase, before=before, around=around, after=after, stdin=self._stdout)
+
     def extract(self, pattern, /, *, ignorecase=False, join_with=' ', format_with=None):
         return extract(pattern, ignorecase=ignorecase, join_with=join_with, format_with=format_with, stdin=self._stdout)
 
@@ -640,6 +697,7 @@ if __name__ == '__main__':
     assert_eq('after pattern', res.grep('t2', after=2).stdout, 't2\nt3\nt4')
     assert_eq('around pattern', res.grep('t2', around=1).stdout, 't1\nt2\nt3')
     assert_eq('grep nothing around pattern', res.grep('tx', around=1).__bool__(), False)
+    assert_eq('grep between around', res.grep_between('t2', 't4', around=1).stdout, 't1\nt2\nt3\nt4\nt5')
 
     res = Result("1, 2, 3, 4, 5, 6\nt1,    t2,t3, t4, t5, t6, t7, t8")
     assert_eq('cut', res.cut(1, range(2, 4), slice(-2, None), delim=r',\s*').stdout,
