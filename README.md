@@ -17,9 +17,9 @@ Time:2022-10-28 10:00:30, CPU:10%, Memory:40%
 
 You can get CPU usage around 10am:
 ```python
-cat('usage-record.txt').grep('Time:2022-10-28 10', around=3).extract(r'CPU:(\d+%)').indent().print(prolog='CPU usage around 10am:\n')
+cat('usage-record.txt').grep('Time:2022-10-28 10', before=3, after=3).extract(r'CPU:(\d+%)').indent().print(prolog='CPU usage around 10am:\n')
 # or
-grep('Time:2022-10-28 10', around=3, pathname='usage-record.txt').extract(r'CPU:(\d+%)').indent().print(prolog='CPU usage around 10am:\n')
+grep('Time:2022-10-28 10', before=3, after=3, pathname='usage-record.txt').extract(r'CPU:(\d+%)').indent().print(prolog='CPU usage around 10am:\n')
 # ==>
 CPU usage around 10am:
   10%
@@ -33,12 +33,12 @@ CPU usage around 10am:
 
 Save it to cpu-10am.txt before print:
 ```python
-cat('usage-record.txt').grep('Time:2022-10-28 10', around=3).extract(r'CPU:(\d+%)').tee('cpu-10am.txt').indent().print(prolog='CPU usage around 10am:\n')
+cat('usage-record.txt').grep('Time:2022-10-28 10', before=3, after=3).extract(r'CPU:(\d+%)').tee('cpu-10am.txt').indent().print(prolog='CPU usage around 10am:\n')
 ```
 
 CPU average usage around 10am:
 ```python
-cat('usage-record.txt').grep('Time:2022-10-28 10', around=3).extract(r'CPU:(\d+%)').fmean()
+cat('usage-record.txt').grep('Time:2022-10-28 10', before=3, after=3).extract(r'CPU:(\d+%)').fmean()
 # ==>
 15.71
 ```

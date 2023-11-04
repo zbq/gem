@@ -112,15 +112,15 @@ def _find(lines, pattern, /, *, ignorecase=False, invert=False):
     flags = 0
     if ignorecase:
         flags |= re.IGNORECASE
-    indexes = []
+    indexes = set()
     for i in range(len(lines)):
         m = re.search(pattern, lines[i], flags)
         if m:
             if not invert:
-                indexes.append(i)
+                indexes.add(i)
         else:
             if invert:
-                indexes.append(i)
+                indexes.add(i)
     return indexes
 
 def _select(src, nums):
@@ -161,7 +161,7 @@ def _before(indexes, count, length):
         if start < 0:
             start = 0
         res.update(range(start, stop))
-    return sorted(res)
+    return res
 
 def _after(indexes, count, length):
     res = set()
@@ -175,32 +175,15 @@ def _after(indexes, count, length):
         if stop > length:
             stop = length
         res.update(range(start, stop))
-    return sorted(res)
+    return res
 
-def _around(indexes, count, length):
-    res = set()
-    for index in indexes:
-        if index < 0:
-            index += length
-        if index < 0 or index >= length:
-            continue
-        start = index - count
-        if start < 0:
-            start = 0
-        stop = start + 2*count + 1
-        if stop > length:
-            stop = length
-        res.update(range(start, stop))
-    return sorted(res)
-
-def grep(pattern, /, *, ignorecase=False, invert=False, before=None, around=None, after=None, stdin=None, pathname=None, encoding=None, errors=None):
+def grep(pattern, /, *, ignorecase=False, invert=False, before=None, after=None, stdin=None, pathname=None, encoding=None, errors=None):
     """
     simulate `egrep` command.
         pattern: regular expression
         ignorecase: ignore case when search pattern
         invert: invert selection
         before: line count before the matched line, simulate `grep -B` command
-        around: line count around the matched line, simulate `grep -C` command
         after: line count after the matched line, simulate `grep -A` command
 
     example:
@@ -214,7 +197,7 @@ def grep(pattern, /, *, ignorecase=False, invert=False, before=None, around=None
         t1
         t2
 
-        grep('t2', around=1, stdin="t0\nt1\nt2\nt3\nt4\nt5\nt6")
+        grep('t2', before=1, after=1, stdin="t0\nt1\nt2\nt3\nt4\nt5\nt6")
         ===>
         t1
         t2
@@ -226,26 +209,21 @@ def grep(pattern, /, *, ignorecase=False, invert=False, before=None, around=None
         t3
         t4
     """
-    narg = 0
-    for n in (before, around, after):
-        if n is not None:
-            assert isinstance(n, int)
-            narg += 1
-    assert narg <= 1, 'before/around/after, not more than one argument.'
     text, err = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
     if err:
         return text
     lines = text.splitlines()
     indexes = _find(lines, pattern, ignorecase=ignorecase, invert=invert)
     if before is not None:
+        assert isinstance(before, int)
         indexes = _before(indexes, before, len(lines))
-    elif around is not None:
-        indexes = _around(indexes, around, len(lines))
-    elif after is not None:
+
+    if after is not None:
+        assert isinstance(after, int)
         indexes = _after(indexes, after, len(lines))
 
     if indexes:
-        return Result('\n'.join(_select(lines, indexes)))
+        return Result('\n'.join(_select(lines, sorted(indexes))))
     else:
         return Result('', returncode=1)
 
@@ -262,16 +240,10 @@ def _find_first(lines, pattern, from_index, /, *, ignorecase=False):
             return i
     return None
 
-def grep_between(pattern_beg, pattern_end, /, *, ignorecase=False, before=None, around=None, after=None, stdin=None, pathname=None, encoding=None, errors=None):
+def grep_between(pattern_beg, pattern_end, /, *, ignorecase=False, before=None, after=None, stdin=None, pathname=None, encoding=None, errors=None):
     """
     grep text between `pattern_beg` and `pattern_end`.
     """
-    narg = 0
-    for n in (before, around, after):
-        if n is not None:
-            assert isinstance(n, int)
-            narg += 1
-    assert narg <= 1, 'before/around/after, not more than one argument.'
     text, err = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
     if err:
         return text
@@ -287,17 +259,17 @@ def grep_between(pattern_beg, pattern_end, /, *, ignorecase=False, before=None, 
             break
         indexes.update(range(idx_beg, idx_end+1))
         idx_beg = idx_end+1
+
     if before is not None:
+        assert isinstance(before, int)
         indexes = _before(indexes, before, len(lines))
-    elif around is not None:
-        indexes = _around(indexes, around, len(lines))
-    elif after is not None:
+
+    if after is not None:
+        assert isinstance(after, int)
         indexes = _after(indexes, after, len(lines))
-    else:
-        indexes = sorted(indexes)
 
     if indexes:
-        return Result('\n'.join(_select(lines, indexes)))
+        return Result('\n'.join(_select(lines, sorted(indexes))))
     else:
         return Result('', returncode=1)
 
@@ -560,12 +532,12 @@ class Result:
     def select(self, *nums):
         return select(*nums, stdin=self._stdout)
 
-    def grep(self, pattern, /, *, ignorecase=False, invert=False, before=None, around=None, after=None):
-        return grep(pattern, ignorecase=ignorecase, invert=invert, before=before, around=around, after=after, stdin=self._stdout)
+    def grep(self, pattern, /, *, ignorecase=False, invert=False, before=None, after=None):
+        return grep(pattern, ignorecase=ignorecase, invert=invert, before=before, after=after, stdin=self._stdout)
 
-    def grep_between(self, pattern_beg, pattern_end, /, *, ignorecase=False, before=None, around=None, after=None,
+    def grep_between(self, pattern_beg, pattern_end, /, *, ignorecase=False, before=None, after=None,
                      stdin=None, pathname=None, encoding=None, errors=None):
-        return grep_between(pattern_beg, pattern_end, ignorecase=ignorecase, before=before, around=around, after=after, stdin=self._stdout)
+        return grep_between(pattern_beg, pattern_end, ignorecase=ignorecase, before=before, after=after, stdin=self._stdout)
 
     def extract(self, pattern, /, *, ignorecase=False, join_with=' ', format_with=None):
         return extract(pattern, ignorecase=ignorecase, join_with=join_with, format_with=format_with, stdin=self._stdout)
@@ -695,9 +667,9 @@ if __name__ == '__main__':
     res = Result("t0\nt1\nt2\nt3\nt4\nt5\nt6")
     assert_eq('before pattern', res.grep('t2', before=2).stdout, 't0\nt1\nt2')
     assert_eq('after pattern', res.grep('t2', after=2).stdout, 't2\nt3\nt4')
-    assert_eq('around pattern', res.grep('t2', around=1).stdout, 't1\nt2\nt3')
-    assert_eq('grep nothing around pattern', res.grep('tx', around=1).__bool__(), False)
-    assert_eq('grep between around', res.grep_between('t2', 't4', around=1).stdout, 't1\nt2\nt3\nt4\nt5')
+    assert_eq('around pattern', res.grep('t2', before=1, after=1).stdout, 't1\nt2\nt3')
+    assert_eq('grep nothing around pattern', res.grep('tx', before=1, after=1).__bool__(), False)
+    assert_eq('grep between around', res.grep_between('t2', 't4', before=1, after=1).stdout, 't1\nt2\nt3\nt4\nt5')
 
     res = Result("1, 2, 3, 4, 5, 6\nt1,    t2,t3, t4, t5, t6, t7, t8")
     assert_eq('cut', res.cut(1, range(2, 4), slice(-2, None), delim=r',\s*').stdout,
