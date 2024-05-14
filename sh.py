@@ -187,7 +187,7 @@ def grep(pattern, /, *, ignorecase=False, invert=False, before=None, after=None,
         after: line count after the matched line, simulate `grep -A` command
 
     example:
-        grep(r'Name:\s+\w+', stdin='  Name:   Tony\n  Age:    12')
+        grep('Name:\\s+\\w+', stdin='  Name:   Tony\n  Age:    12')
         ===>
         Name:   Tony
 
@@ -280,7 +280,7 @@ def extract(pattern, /, *, ignorecase=False, join_with=' ', format_with=None, st
         ignorecase: ignore case when search pattern
 
     example:
-        extract(r'(\w+):\s+(\w+)', stdin='  Name:   Tony\n  Age:    12', format_with='{0}={1}')
+        extract('(\\w+):\\s+(\\w+)', stdin='  Name:   Tony\n  Age:    12', format_with='{0}={1}')
         ===>
         Name=Tony
         Age=12
@@ -342,12 +342,12 @@ def sed(pattern, repl, /, *, maxrepl=0, ignorecase=False, stdin=None, pathname=N
         ignorecase: ignore case when search pattern
 
     example:
-        sed(r'\s+', ' ', stdin="Name:   Tony\nAge: \t 12")
+        sed('\\s+', ' ', stdin="Name:   Tony\nAge: \t 12")
         ===>
         Name: Tony
         Age: 12
 
-        sed(r'(\S+)\s+(\S+)', r'\g<1> "\g<2>"', stdin="Name:   Tony\nAge: \t 12")
+        sed('(\\S+)\\s+(\\S+)', '\\g<1> "\\g<2>"', stdin="Name:   Tony\nAge: \t 12")
         ===>
         Name: "Tony"
         Age: "12"
@@ -754,4 +754,3 @@ if __name__ == '__main__':
 
     res = Result('', returncode=1)
     assert_eq('bool of fail result is false', res.__bool__(), False)
-
