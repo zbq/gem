@@ -5,6 +5,7 @@ import re
 import textwrap
 import locale
 import math
+import io
 import statistics
 from glob import glob as _glob
 from datetime import datetime
@@ -24,6 +25,7 @@ __all__ = [
     'compact',
     'extract',
     'wc',
+    'distribution',
     'uniq',
     'sort',
     'tee',
@@ -36,11 +38,14 @@ __all__ = [
     'PIPE',
 ]
 
+
 def now():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+
 def glob(pathname, root_dir=None):
     return Result('\n'.join(_glob(pathname, root_dir=root_dir, recursive=True)))
+
 
 def run(cmdline, /, *, stdin=None, stdout=PIPE, stderr=PIPE, encoding=None, errors=None):
     """
@@ -68,10 +73,12 @@ def run(cmdline, /, *, stdin=None, stdout=PIPE, stderr=PIPE, encoding=None, erro
         outs, errs = proc.communicate(stdin)
         return Result(outs, returncode=proc.returncode, stderr=errs)
 
+
 def cat(pathname, /, *, encoding=None, errors=None, newline=None):
     """
     simulate `cat`, but support file encoding.
-        encoding: the name of the encoding used to decode the file. The default encoding is platform dependent (whatever locale.getpreferredencoding() returns)
+        encoding: the name of the encoding used to decode the file.
+            The default encoding is platform dependent (whatever locale.getpreferredencoding() returns)
         errors: specifies how encoding and decoding errors are to be handled, include:
             'strict' to raise a ValueError exception if there is an encoding error. The None has the same effect.
             'ignore' ignores errors. Note that ignoring encoding errors can lead to data loss.
@@ -83,6 +90,7 @@ def cat(pathname, /, *, encoding=None, errors=None, newline=None):
             return Result(file.read())
     except Exception as exp:
         return Result('', returncode=1, stderr=str(exp))
+
 
 def _get_input(*, stdin=None, pathname=None, encoding=None, errors=None, newline=None):
     """
@@ -105,6 +113,7 @@ def _get_input(*, stdin=None, pathname=None, encoding=None, errors=None, newline
     else:
         return stdin, False
 
+
 def _find(lines, pattern, /, *, ignorecase=False, invert=False):
     """
     similar to `grep` but return matched indexes.
@@ -123,6 +132,7 @@ def _find(lines, pattern, /, *, ignorecase=False, invert=False):
                 indexes.add(i)
     return indexes
 
+
 def _select(src, nums):
     res = []
     for num in nums:
@@ -134,6 +144,7 @@ def _select(src, nums):
         else:
             res.append(src.__getitem__(num))
     return res
+
 
 def select(*nums, stdin=None, pathname=None, encoding=None, errors=None):
     """
@@ -149,6 +160,7 @@ def select(*nums, stdin=None, pathname=None, encoding=None, errors=None):
     lines = text.splitlines()
     return Result('\n'.join(_select(lines, nums)))
 
+
 def _before(indexes, count, length):
     res = set()
     for index in indexes:
@@ -162,6 +174,7 @@ def _before(indexes, count, length):
             start = 0
         res.update(range(start, stop))
     return res
+
 
 def _after(indexes, count, length):
     res = set()
@@ -177,7 +190,9 @@ def _after(indexes, count, length):
         res.update(range(start, stop))
     return res
 
-def grep(pattern, /, *, ignorecase=False, invert=False, before=None, after=None, stdin=None, pathname=None, encoding=None, errors=None):
+
+def grep(pattern, /, *, ignorecase=False, invert=False, before=None, after=None, 
+         stdin=None, pathname=None, encoding=None, errors=None):
     """
     simulate `egrep` command.
         pattern: regular expression
@@ -227,6 +242,7 @@ def grep(pattern, /, *, ignorecase=False, invert=False, before=None, after=None,
     else:
         return Result('', returncode=1)
 
+
 def _find_first(lines, pattern, from_index, /, *, ignorecase=False):
     """
     similar to `_find` but return the first index.
@@ -240,7 +256,9 @@ def _find_first(lines, pattern, from_index, /, *, ignorecase=False):
             return i
     return None
 
-def grep_between(pattern_beg, pattern_end, /, *, ignorecase=False, before=None, after=None, stdin=None, pathname=None, encoding=None, errors=None):
+
+def grep_between(pattern_beg, pattern_end, /, *, ignorecase=False, before=None, after=None,
+                 stdin=None, pathname=None, encoding=None, errors=None):
     """
     grep text between `pattern_beg` and `pattern_end`.
     """
@@ -273,7 +291,9 @@ def grep_between(pattern_beg, pattern_end, /, *, ignorecase=False, before=None, 
     else:
         return Result('', returncode=1)
 
-def extract(pattern, /, *, ignorecase=False, join_with=' ', format_with=None, stdin=None, pathname=None, encoding=None, errors=None):
+
+def extract(pattern, /, *, ignorecase=False, join_with=' ', format_with=None,
+            stdin=None, pathname=None, encoding=None, errors=None):
     """
     find matched string, matched string groups are formatted by `format_with` (if provided) or joined by `join_with`.
         pattern: regular expression
@@ -305,7 +325,9 @@ def extract(pattern, /, *, ignorecase=False, join_with=' ', format_with=None, st
     else:
         return Result('', returncode=1)
 
-def cut(*fields, delim=r'\s+', maxsplit=0, join_with=' ', format_with=None, stdin=None, pathname=None, encoding=None, errors=None):
+
+def cut(*fields, delim=r'\s+', maxsplit=0, join_with=' ', format_with=None,
+        stdin=None, pathname=None, encoding=None, errors=None):
     """
     simulate `cut` command.
         delim: delimiter(support regular expression)
@@ -334,6 +356,7 @@ def cut(*fields, delim=r'\s+', maxsplit=0, join_with=' ', format_with=None, stdi
         return Result('\n'.join(res))
     else:
         return Result('', returncode=1)
+
 
 def sed(pattern, repl, /, *, maxrepl=0, ignorecase=False, stdin=None, pathname=None, encoding=None, errors=None):
     """
@@ -364,6 +387,7 @@ def sed(pattern, repl, /, *, maxrepl=0, ignorecase=False, stdin=None, pathname=N
         res.append(line)
     return Result('\n'.join(res))
 
+
 def iterate(type, /, *, stdin=None, pathname=None, encoding=None, errors=None):
     """
     iterate as 'char/word/line'.
@@ -377,6 +401,7 @@ def iterate(type, /, *, stdin=None, pathname=None, encoding=None, errors=None):
         return text.split()
     else:
         return text.splitlines()
+
 
 def foreach(type, proc, /, *, stdin=None, pathname=None, encoding=None, errors=None):
     """
@@ -396,6 +421,7 @@ def foreach(type, proc, /, *, stdin=None, pathname=None, encoding=None, errors=N
             break
     return Result(''.join(res))
 
+
 def compact(*, strip=True, remove_empty_line=True, join_with=' ', stdin=None, pathname=None, encoding=None, errors=None):
     text, err = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
     if err:
@@ -409,6 +435,7 @@ def compact(*, strip=True, remove_empty_line=True, join_with=' ', stdin=None, pa
         res.append(line)
     return Result(join_with.join(res))
 
+
 def wc(type, /, *, return_num=True, stdin=None, pathname=None, encoding=None, errors=None):
     """
     return count of 'char/word/line'.
@@ -417,6 +444,25 @@ def wc(type, /, *, return_num=True, stdin=None, pathname=None, encoding=None, er
     """
     length = len(iterate(type, stdin=stdin, pathname=pathname, encoding=encoding, errors=errors))
     return length if return_num else Result(str(length))
+
+
+def distribution(type, /, *, return_map=True, stdin=None, pathname=None, encoding=None, errors=None):
+    """
+    return distribution of 'char/word/line'.
+
+        return_map: if true, return distribution map
+    """
+    dist = {}
+    for item in iterate(type, stdin=stdin, pathname=pathname, encoding=encoding, errors=errors):
+        dist[item] = dist.get(item, 0) + 1
+    if return_map:
+        return dist
+    else:
+        sio = io.StringIO()
+        for item in dist:
+            sio.write(f'{dist[item]} {item}\n')
+        return Result(sio.getvalue())
+
 
 def uniq(*, ignorecase=False, stdin=None, pathname=None, encoding=None, errors=None):
     text, err = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
@@ -435,12 +481,14 @@ def uniq(*, ignorecase=False, stdin=None, pathname=None, encoding=None, errors=N
             res.append(lines[i])
     return Result('\n'.join(res))
 
+
 def sort(*, ascending=True, ignorecase=False, stdin=None, pathname=None, encoding=None, errors=None):
     text, err = _get_input(stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
     if err:
         return text
     lines = text.splitlines() # sorted(["0\n", "0"]) => ["0", "0\n"], so do not keep newline
     return Result('\n'.join(sorted(lines, key=str.casefold if ignorecase else None, reverse=not ascending)))
+
 
 def tee(pathname, /, *, stdin, append=False, encoding=None, errors=None, newline=None):
     mode = 'a' if append else 'w'
@@ -450,6 +498,7 @@ def tee(pathname, /, *, stdin, append=False, encoding=None, errors=None, newline
         return Result(stdin)
     except Exception as exp:
         return Result('', returncode=1, stderr=str(exp))
+
 
 def asnum(*, int_base=10, flatten=True, stdin=None, pathname=None, encoding=None, errors=None):
     """
@@ -488,6 +537,7 @@ def asnum(*, int_base=10, flatten=True, stdin=None, pathname=None, encoding=None
             nums.append(tmp)
     return nums
 
+
 def fsum(*, int_base=10, stdin=None, pathname=None, encoding=None, errors=None):
     """
     return the sum of the numbers in the text.
@@ -495,12 +545,14 @@ def fsum(*, int_base=10, stdin=None, pathname=None, encoding=None, errors=None):
     nums = asnum(int_base=int_base, flatten=True, stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
     return math.fsum(nums)
 
+
 def fmean(*, int_base=10, stdin=None, pathname=None, encoding=None, errors=None):
     """
     return the mean of the numbers in the text.
     """
     nums = asnum(int_base=int_base, flatten=True, stdin=stdin, pathname=pathname, encoding=encoding, errors=errors)
     return statistics.fmean(nums)
+
 
 class Result:
     def __init__(self, stdout, /, *, returncode=0, stderr=None):
@@ -588,6 +640,9 @@ class Result:
     def wc(self, type, /, *, return_num=True):
         return wc(type, return_num=return_num, stdin=self._stdout)
 
+    def distribution(self, type, /, *, return_map=True):
+        return distribution(type, return_map=return_map, stdin=self._stdout)
+
     def uniq(self, *, ignorecase=False):
         return uniq(ignorecase=ignorecase, stdin=self._stdout)
 
@@ -631,6 +686,7 @@ class Result:
             return repr('\n'.join(res))
         else:
             return repr(text)
+
 
 Result.pipe.__doc__ = run.__doc__
 Result.select.__doc__ = select.__doc__
@@ -706,6 +762,13 @@ if __name__ == '__main__':
     assert_eq('wc char', res.wc('char', return_num=False).stdout, '8')
     assert_eq('wc word', res.wc('word', return_num=False).stdout, '3')
     assert_eq('wc line', res.wc('line'), 3)
+
+    res = Result('1\n2\n3\n2\n1')
+    assert_eq('char dist', res.distribution('char')['1'], 2)
+    assert_eq('char dist', res.distribution('char')['\n'], 4)
+    assert_eq('word dist', res.distribution('word')['2'], 2)
+    assert_eq('line dist', res.distribution('line')['2'], 2)
+    assert_eq('line dist', res.distribution('line', return_map=False).sort().stdout, "1 3\n2 1\n2 2")
 
     res = Result('1\n1\n2\n 2')
     assert_eq('uniq', res.uniq().stdout, '1\n2\n 2')
