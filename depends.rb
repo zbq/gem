@@ -117,8 +117,11 @@ OptionParser.new do |parser|
   parser.on("-R", "--all-rdepends=ITEM", "show all (recursive) reversed depends of item") do |v|
     options[:all_rdepends] = v
   end
-  parser.on("-c", "--dry-clean=ITEMS", Array, "show items and all depends that are cleanable") do |v|
+  parser.on("-c", "--dry-clean=ITEMS", Array, "dry clean items and there private depends") do |v|
     options[:dry_clean] = v
+  end
+  parser.on("-C", "--dry-clean-list=FILE", "dry clean items (from FILE) and there private depends") do |v|
+    options[:dry_clean_list] = v
   end
 end.parse!
 
@@ -193,6 +196,14 @@ elsif options[:all_rdepends] then
   end
 elsif options[:dry_clean] then
   items = options[:dry_clean]
+  items.each do |item|
+    ensure_exist(depends, item)
+  end
+  dry_clean(depends, items).each do |item|
+    puts item
+  end
+elsif options[:dry_clean_list] then
+  items = IO.readlines(options[:dry_clean_list]).collect {|line| line.chomp("\n")}
   items.each do |item|
     ensure_exist(depends, item)
   end
