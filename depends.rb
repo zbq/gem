@@ -1,40 +1,56 @@
 require 'optparse'
 
-def __walk(chain, item, getter, &block)
+def __walk(chain, item, iterator, &block)
   chain << item
-  next_items = getter.call(item)
-  if next_items.length != 0 then
-    next_items.each do |next_item|
-      if chain.include?(next_item) then
-        yield chain.dup, next_item # dead lock
-      else
-        __walk(chain, next_item, getter, &block)
-      end
-    end
-  elsif chain.length != 1 then
+  next_items = iterator.call(item)
+  if next_items.empty? then
     yield chain.dup, nil
+  end
+  next_items.each do |next_item|
+    if chain.include?(next_item) then
+      yield chain.dup, next_item # dead lock
+    else
+      __walk(chain, next_item, iterator, &block)
+    end
   end
   chain.pop
 end
 
-def walk_depends(depends, item, &block)
+def walk_depends(depends, item)
   chain = []
-  getter = lambda {|item| depends[item]}
-  __walk(chain, item, getter, &block)
+  iterator = lambda {|item| depends[item]}
+  __walk(chain, item, iterator) do |ch, deadlock|
+    yield ch, deadlock if ch.length != 1
+  end
 end
 
-def walk_rdepends(depends, item, &block)
+def get_rdepends(depends, item)
+  rdeps = Set.new
+  depends.each do |k, v|
+    if v.include?(item)
+      rdeps.add(k)
+    end
+  end
+  return rdeps
+end
+
+def walk_rdepends(depends, item)
   chain = []
-  getter = lambda { |item|
-    rdeps = Set.new
-    depends.each { |k, v|
-      if v.include?(item) then
-        rdeps.add(k)
-      end
-    }
-    return rdeps
+  iterator = lambda { |item|
+    return get_rdepends(depends, item)
   }
-  __walk(chain, item, getter, &block)
+  __walk(chain, item, iterator) do |ch, deadlock|
+    yield ch, deadlock if ch.length != 1
+  end
+end
+
+def get_tops(depends)
+  # item no one depends on
+  items = depends.keys.to_set
+  depends.each_value do |deps|
+    items.subtract(deps)
+  end
+  return items
 end
 
 def __dry_clean(cleaned, depends, tops, items)
@@ -42,24 +58,41 @@ def __dry_clean(cleaned, depends, tops, items)
     depends.delete(item)
     cleaned.add(item)
   end
-  tops2 = (depends.keys.to_set - depends.values.to_set.flatten)
-  new = tops2 - tops
-  if new.length != 0 then
-    __dry_clean(cleaned, depends, tops2, new)
+  new_tops = get_tops(depends)
+  delta = new_tops - tops
+  if delta.length != 0 then
+    __dry_clean(cleaned, depends, new_tops, delta)
   end
 end
 
 def dry_clean(depends, items)
-  cleaned = Set.new
-  tops = (depends.keys.to_set - depends.values.to_set.flatten)
+  tops = get_tops(depends)
   items.each do |item|
     if not tops.include?(item) then
       puts "'#{item}' is not a top level item"
-      return cleaned
+      return Set.new
     end
   end
+  cleaned = Set.new
   __dry_clean(cleaned, depends, tops, items)
   return cleaned
+end
+
+# a -> b c d
+def read_depends(filename)
+  depends = Hash.new
+  File.open(filename) do |file|
+    file.each_line do |line|
+      item, mark, *deps = line.split
+      if mark == "->" and not deps.empty? then
+        depends[item] = depends.fetch(item, Set.new).union(deps)
+        deps.each do |dep|
+          depends[dep] = depends.fetch(dep, Set.new)
+        end
+      end
+    end
+  end
+  return depends
 end
 
 options = {}
@@ -94,28 +127,29 @@ if ARGV.size != 1 then
   exit 1
 end
 
-depends = Hash.new { |h, k| h[k] = Set.new() }
-File.open(ARGV[0]) do |file|
-  file.each_line do |line|
-    parts = line.split
-    if parts.size == 3 and parts[1] == "->" then
-      depends[parts[0]].add(parts[2])
-      depends[parts[2]] # ensure that every item exist in keys
-    end
+def ensure_exist(depends, item)
+  if not depends.include?(item) then
+    puts "'#{item}' is not exist"
+    exit 1
   end
 end
 
+depends = read_depends(ARGV[0])
 if options[:top] then
-  (depends.keys.to_set - depends.values.to_set.flatten).each do |item|
+  get_tops(depends).sort.each do |item|
     puts item
   end
 elsif options[:depends] then
-  depends.fetch(options[:depends], Set.new()).each do |item|
-    puts item
+  item = options[:depends]
+  ensure_exist(depends, item)
+  depends[item].each do |dep|
+    puts dep
   end
 elsif options[:all_depends] then
+  item = options[:all_depends]
+  ensure_exist(depends, item)
   if options[:verbose] then
-    walk_depends(depends, options[:all_depends]) do |ch, deadlock|
+    walk_depends(depends, item) do |ch, deadlock|
       if deadlock then
         puts "#{ch.join(" -> ")} -> #{deadlock} (DEAD LOCK)"
       else
@@ -123,23 +157,25 @@ elsif options[:all_depends] then
       end
     end
   else
-    all = Set.new()
-    walk_depends(depends, options[:all_depends]) do |ch, _|
-      all.merge(ch)
+    deps = Set.new()
+    walk_depends(depends, item) do |ch, _|
+      deps.merge(ch)
     end
-    all.delete(options[:all_depends]).sort.each do |item|
-      puts item
+    deps.delete(item).sort.each do |dep|
+      puts dep
     end
   end
 elsif options[:rdepends] then
-  depends.each do |k, v|
-    if v.include?(options[:rdepends])
-      puts k
-    end
+  item = options[:rdepends]
+  ensure_exist(depends, item)
+  get_rdepends(depends, item).each do |rdep|
+    puts rdep
   end
 elsif options[:all_rdepends] then
+  item = options[:all_rdepends]
+  ensure_exist(depends, item)
   if options[:verbose] then
-    walk_rdepends(depends, options[:all_rdepends]) do |ch, deadlock|
+    walk_rdepends(depends, item) do |ch, deadlock|
       if deadlock then
         puts "#{ch.join(" <- ")} <- #{deadlock} (DEAD LOCK)"
       else
@@ -147,16 +183,20 @@ elsif options[:all_rdepends] then
       end
     end
   else
-    all = Set.new()
-    walk_rdepends(depends, options[:all_rdepends]) do |ch, _|
-      all.merge(ch)
+    rdeps = Set.new()
+    walk_rdepends(depends, item) do |ch, _|
+      rdeps.merge(ch)
     end
-    all.delete(options[:all_rdepends]).sort.each do |item|
-      puts item
+    rdeps.delete(item).sort.each do |rdep|
+      puts rdep
     end
   end
 elsif options[:dry_clean] then
-  dry_clean(depends, options[:dry_clean]).each do |item|
+  items = options[:dry_clean]
+  items.each do |item|
+    ensure_exist(depends, item)
+  end
+  dry_clean(depends, items).each do |item|
     puts item
   end
 end
