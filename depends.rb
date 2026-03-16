@@ -1,3 +1,4 @@
+#!/usr/bin/ruby
 require 'optparse'
 
 def __walk(chain, item, iterator, &block)
@@ -14,6 +15,15 @@ def __walk(chain, item, iterator, &block)
     end
   end
   chain.pop
+end
+
+def __find(found, item, iterator)
+  found.add(item)
+  iterator.call(item).each do |next_item|
+    if not found.include?(next_item) then
+      __find(found, next_item, iterator)
+    end
+  end
 end
 
 def walk_depends(depends, item)
@@ -145,7 +155,7 @@ if options[:top] then
 elsif options[:depends] then
   item = options[:depends]
   ensure_exist(depends, item)
-  depends[item].each do |dep|
+  depends[item].sort.each do |dep|
     puts dep
   end
 elsif options[:all_depends] then
@@ -161,9 +171,8 @@ elsif options[:all_depends] then
     end
   else
     deps = Set.new()
-    walk_depends(depends, item) do |ch, _|
-      deps.merge(ch)
-    end
+    iterator = lambda {|item| depends[item]}
+    __find(deps, item, iterator)
     deps.delete(item).sort.each do |dep|
       puts dep
     end
@@ -171,7 +180,7 @@ elsif options[:all_depends] then
 elsif options[:rdepends] then
   item = options[:rdepends]
   ensure_exist(depends, item)
-  get_rdepends(depends, item).each do |rdep|
+  get_rdepends(depends, item).sort.each do |rdep|
     puts rdep
   end
 elsif options[:all_rdepends] then
@@ -187,9 +196,10 @@ elsif options[:all_rdepends] then
     end
   else
     rdeps = Set.new()
-    walk_rdepends(depends, item) do |ch, _|
-      rdeps.merge(ch)
-    end
+    iterator = lambda { |item|
+      return get_rdepends(depends, item)
+    }
+    __find(rdeps, item, iterator)
     rdeps.delete(item).sort.each do |rdep|
       puts rdep
     end
@@ -199,7 +209,7 @@ elsif options[:dry_clean] then
   items.each do |item|
     ensure_exist(depends, item)
   end
-  dry_clean(depends, items).each do |item|
+  dry_clean(depends, items).sort.each do |item|
     puts item
   end
 elsif options[:dry_clean_list] then
@@ -207,7 +217,7 @@ elsif options[:dry_clean_list] then
   items.each do |item|
     ensure_exist(depends, item)
   end
-  dry_clean(depends, items).each do |item|
+  dry_clean(depends, items).sort.each do |item|
     puts item
   end
 end
