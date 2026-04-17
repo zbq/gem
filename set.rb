@@ -18,17 +18,7 @@ end
 
 set1 = read(ARGV[0])
 set2 = read(ARGV[2])
-if ARGV[1] == '|' then
-  result = set1 | set2
-elsif ARGV[1] == '&' then
-  result = set1 & set2
-elsif ARGV[1] == '-' then
-  result = set1 - set2
-elsif ARGV[1] == '^' then
-  result = set1 ^ set2
-end
-
+result = set1.send(ARGV[1], set2)
 result.sort.each do |line|
   puts line
 end
-
